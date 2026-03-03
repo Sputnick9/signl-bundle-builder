@@ -1,0 +1,68 @@
+You are a senior Shopify developer. 
+
+Build a **Shopify bundle builder feature in Liquid, CSS, and JavaScript** like the one at:
+https://lumedeodorant.com/products/build-your-own-bundle
+
+This is NOT the full Shopify App yet — this is the **first phase** and must be implemented directly in a Shopify store theme using Liquid templates, sections, and scripts.
+
+Requirements:
+
+1. Build a **custom product page template** in Shopify that behaves like a bundle builder.
+2. It must allow customers to:
+   - Choose the **number of items** they want in the bundle.
+   - Select products/variants to fill those slots.
+   - See **live price updates**, including individual item prices and total bundle price.
+   - See a **discount or savings amount** if applicable.
+   - Prevent selecting more or fewer items than allowed.
+   - Display selected item thumbnails.
+   - Disable out-of-stock variants.
+3. The builder must be responsive and work on desktop and mobile.
+4. The builder must use **AJAX** to update cart without page reload.
+5. All code must be **production-ready** (no pseudo-code), modular, and extendable.
+
+Deliverables you must generate:
+
+1. **Liquid Templates**
+   - A main section file (e.g., `sections/bundle-builder.liquid`)
+   - Snippets for product slots, selectors, and cart buttons
+   - JSON settings for bundle configuration
+
+2. **JavaScript**
+   - A script to:
+     - Handle selection UI
+     - Load product and variant info via Shopify AJAX API
+     - Update prices dynamically
+     - Add bundle to cart via AJAX
+     - Handle validations & UX messaging
+
+3. **CSS**
+   - Styles scoped to the bundle builder
+   - Responsive layout
+
+4. **Configurable Settings**
+   - Merchant configuration options in the section settings (max items, pricing rules, colors)
+
+5. **Instructions**
+   - How to add this section to a product page template
+   - How to configure eligible products
+   - How to test functionality
+
+Constraints:
+
+- Use **Shopify Liquid**, not React or Shopify App Bridge for this phase.
+- Do not use backend servers or apps yet.
+- All product and variant data fetching must use Shopify’s Liquid and AJAX APIs.
+- Code must not rely on 3rd-party bundle apps.
+
+Match the behavior and UI style of the referenced bundle builder, including:
+
+- Product slot grid
+- Variant selection
+- Visual feedback on selection
+- Real-time price and total
+- Disabled states for out of stock
+- Add to cart behavior
+
+Output:
+
+- A complete folder structure with files:
