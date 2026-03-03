@@ -17,10 +17,11 @@ import {
   Plus,
   Trash2,
   ArrowUp,
+  Zap,
 } from "lucide-react";
 import type { ProductType, CartItem, DiscountTier } from "@shared/schema";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 function formatPrice(cents: number): string {
   return "$" + (cents / 100).toFixed(2);
@@ -96,6 +97,90 @@ function getNextTier(
   return null;
 }
 
+function getMaxTier(discountTiers: DiscountTier[]): DiscountTier | null {
+  if (discountTiers.length === 0) return null;
+  return discountTiers[discountTiers.length - 1];
+}
+
+interface TierProgressBarProps {
+  itemCount: number;
+  discountTiers: DiscountTier[];
+  discountPercent: number;
+}
+
+function TierProgressBar({ itemCount, discountTiers, discountPercent }: TierProgressBarProps) {
+  const maxTier = getMaxTier(discountTiers);
+  if (!maxTier || discountTiers.length === 0) return null;
+
+  const maxItems = maxTier.minItems;
+  const progress = Math.min((itemCount / maxItems) * 100, 100);
+  const nextTier = getNextTier(itemCount, discountTiers);
+  const isMaxed = !nextTier;
+
+  return (
+    <div className="px-4 py-2 bg-gradient-to-r from-primary/5 to-primary/10 border-t border-primary/10" data-testid="discount-progress-bar">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5 text-primary" />
+            {isMaxed ? (
+              <span className="text-xs font-semibold text-primary">
+                Max discount unlocked! {discountPercent}% off
+              </span>
+            ) : (
+              <span className="text-xs font-medium text-muted-foreground">
+                Add {nextTier!.minItems - itemCount} more for{" "}
+                <span className="text-primary font-semibold">{nextTier!.discountPercent}% off</span>
+              </span>
+            )}
+          </div>
+          {discountPercent > 0 && (
+            <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4">
+              {discountPercent}% off
+            </Badge>
+          )}
+        </div>
+
+        <div className="relative h-2 bg-muted rounded-full overflow-hidden">
+          <motion.div
+            className="absolute inset-y-0 left-0 bg-primary rounded-full"
+            initial={{ width: 0 }}
+            animate={{ width: `${progress}%` }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+          />
+          {discountTiers.map((tier) => {
+            const pos = (tier.minItems / maxItems) * 100;
+            return (
+              <div
+                key={tier.minItems}
+                className="absolute top-0 bottom-0 w-px bg-background/60"
+                style={{ left: `${pos}%` }}
+              />
+            );
+          })}
+        </div>
+
+        <div className="flex justify-between mt-1">
+          {discountTiers.map((tier) => {
+            const reached = itemCount >= tier.minItems;
+            return (
+              <span
+                key={tier.minItems}
+                className={cn(
+                  "text-[9px] sm:text-[10px] font-medium transition-colors",
+                  reached ? "text-primary" : "text-muted-foreground/60"
+                )}
+              >
+                {tier.minItems}+ = {tier.discountPercent}%
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function StickyCartBar({
   cartItems,
   productTypes,
@@ -107,13 +192,17 @@ export function StickyCartBar({
 }: StickyCartBarProps) {
   const [showSheet, setShowSheet] = useState(false);
 
+  const sortedTiers = useMemo(
+    () => [...discountTiers].sort((a, b) => a.minItems - b.minItems),
+    [discountTiers]
+  );
   const resolved = resolveCartItems(cartItems, productTypes);
   const itemCount = cartItems.reduce((sum, ci) => sum + ci.quantity, 0);
   const subtotal = resolved.reduce((sum, r) => sum + r.price * r.quantity, 0);
-  const discountPercent = getDiscountForCount(itemCount, discountTiers);
+  const discountPercent = getDiscountForCount(itemCount, sortedTiers);
   const discount = Math.round(subtotal * (discountPercent / 100));
   const total = subtotal - discount;
-  const nextTier = getNextTier(itemCount, discountTiers);
+  const nextTier = getNextTier(itemCount, sortedTiers);
 
   if (itemCount === 0) return null;
 
@@ -125,14 +214,11 @@ export function StickyCartBar({
         exit={{ y: 100, opacity: 0 }}
         className="fixed bottom-0 left-0 right-0 z-50"
       >
-        {nextTier && (
-          <div className="bg-primary/10 text-center py-1.5 px-4 text-xs font-medium border-t border-primary/20">
-            <span className="text-primary">
-              Add {nextTier.minItems - itemCount} more to save{" "}
-              {nextTier.discountPercent}%!
-            </span>
-          </div>
-        )}
+        <TierProgressBar
+          itemCount={itemCount}
+          discountTiers={sortedTiers}
+          discountPercent={discountPercent}
+        />
         <div className="bg-card border-t border-border shadow-lg">
           <div className="max-w-7xl mx-auto px-4 py-3">
             <div className="flex items-center gap-3">

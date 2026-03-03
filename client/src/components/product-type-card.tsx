@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -60,7 +59,7 @@ export function ProductTypeCard({
     <Card
       data-testid={`product-type-card-${productType.id}`}
       className={cn(
-        "transition-all duration-300",
+        "transition-all duration-300 cursor-pointer",
         isExpanded && "ring-2 ring-primary border-primary"
       )}
     >
@@ -70,85 +69,103 @@ export function ProductTypeCard({
         onClick={onToggleExpand}
         aria-expanded={isExpanded}
       >
-        <CardContent className="p-4 flex items-center gap-4">
+        <CardContent className="p-3 sm:p-4 flex flex-col items-center gap-2">
           <div
-            className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg flex-shrink-0 flex items-center justify-center"
+            className="w-full aspect-square rounded-lg flex-shrink-0 flex items-center justify-center"
             style={{
               background: `linear-gradient(135deg, ${productType.gradientFrom}, ${productType.gradientTo})`,
             }}
           >
             <Icon
-              className="w-8 h-8 sm:w-10 sm:h-10"
+              className="w-10 h-10 sm:w-12 sm:h-12"
               style={{ color: productType.gradientTo, filter: "brightness(0.5)" }}
             />
           </div>
 
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-sm sm:text-base leading-tight">
+          <div className="w-full text-center">
+            <h3 className="font-semibold text-xs sm:text-sm leading-tight line-clamp-2 min-h-[2rem]">
               {productType.name}
             </h3>
-            <p className="text-base sm:text-lg font-bold mt-1">
+            <p className="text-sm sm:text-base font-bold mt-0.5">
               {formatPrice(productType.price)}
             </p>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <span className="text-xs text-muted-foreground">
-                Show {availableCount} scents
+            <div className="flex items-center justify-center gap-1 mt-1 flex-wrap">
+              <span className="text-[10px] sm:text-xs text-muted-foreground">
+                {availableCount} scents
               </span>
               {itemsInCart > 0 && (
-                <Badge variant="default" className="text-xs">
-                  {itemsInCart} in bundle
+                <Badge variant="default" className="text-[10px] px-1.5 py-0">
+                  {itemsInCart} added
                 </Badge>
               )}
             </div>
           </div>
 
-          <div className="flex-shrink-0 text-muted-foreground">
+          <div className="text-muted-foreground">
             {isExpanded ? (
-              <ChevronUp className="w-5 h-5" />
+              <ChevronUp className="w-4 h-4" />
             ) : (
-              <ChevronDown className="w-5 h-5" />
+              <ChevronDown className="w-4 h-4" />
             )}
           </div>
         </CardContent>
       </button>
-
-      <AnimatePresence>
-        {isExpanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
-            className="overflow-hidden"
-          >
-            <div className="border-t px-4 pb-4 pt-3">
-              <ScrollArea className="w-full">
-                <div className="flex gap-3 pb-2">
-                  {productType.variants.map((variant) => {
-                    const cartItem = cartItems.find(
-                      (ci) => ci.variantId === variant.id
-                    );
-                    const qty = cartItem?.quantity || 0;
-
-                    return (
-                      <ScentVariantCard
-                        key={variant.id}
-                        variant={variant}
-                        price={productType.price}
-                        quantity={qty}
-                        onAdd={() => onAddVariant(variant.id)}
-                        onRemove={() => onRemoveVariant(variant.id)}
-                      />
-                    );
-                  })}
-                </div>
-                <ScrollBar orientation="horizontal" />
-              </ScrollArea>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </Card>
+  );
+}
+
+interface ExpandedVariantsPanelProps {
+  productType: ProductType;
+  cartItems: CartItem[];
+  onAddVariant: (variantId: number) => void;
+  onRemoveVariant: (variantId: number) => void;
+}
+
+export function ExpandedVariantsPanel({
+  productType,
+  cartItems,
+  onAddVariant,
+  onRemoveVariant,
+}: ExpandedVariantsPanelProps) {
+  return (
+    <motion.div
+      initial={{ height: 0, opacity: 0 }}
+      animate={{ height: "auto", opacity: 1 }}
+      exit={{ height: 0, opacity: 0 }}
+      transition={{ duration: 0.3, ease: "easeInOut" }}
+      className="overflow-hidden col-span-full"
+    >
+      <Card className="ring-2 ring-primary border-primary">
+        <CardContent className="p-4">
+          <p className="text-sm font-medium text-muted-foreground mb-3">
+            Choose scents for{" "}
+            <span className="text-foreground font-semibold">{productType.name}</span>
+          </p>
+          <ScrollArea className="w-full">
+            <div className="flex gap-3 pb-2">
+              {(productType.variants || []).map((variant) => {
+                const cartItem = (cartItems || []).find(
+                  (ci) => ci.variantId === variant.id
+                );
+                const qty = cartItem?.quantity || 0;
+
+                return (
+                  <ScentVariantCard
+                    key={variant.id}
+                    variant={variant}
+                    price={productType.price}
+                    quantity={qty}
+                    onAdd={() => onAddVariant(variant.id)}
+                    onRemove={() => onRemoveVariant(variant.id)}
+                  />
+                );
+              })}
+            </div>
+            <ScrollBar orientation="horizontal" />
+          </ScrollArea>
+        </CardContent>
+      </Card>
+    </motion.div>
   );
 }
 

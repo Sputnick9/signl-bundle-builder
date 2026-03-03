@@ -11,10 +11,11 @@ A Shopify-inspired bundle builder web application modeled after the Lume Deodora
 
 ## Key Features
 - **Progressive Discounts**: 2+ items = 10%, 3+ = 15%, 4+ = 20%, 5+ = 25%, 6+ = 30%
-- **Product Types with Scent Variants**: Expandable accordion-style cards showing product formats (e.g., Solid Stick, Spray, Cream Tube) each with multiple scent options
-- **6 Categories**: Deodorant, Wash, Wipes, Soap, Body Cream, Laundry
+- **Product Types with Scent Variants**: Expandable accordion-style cards in 4-column grid (3 on tablet, 2 on mobile); accordion panel drops below the current row spanning full width
+- **All Products on One Page**: Products grouped by category sections (Deodorant, Wash, Wipes, Soap, Body Cream, Laundry) on a single scrollable page
+- **Category Anchor Navigation**: Category tabs act as anchor links that smooth-scroll to the corresponding section
 - **Quantity Controls**: +/- buttons for each scent variant
-- **Sticky Bottom Cart Bar**: Shows live totals, savings, item count; opens sheet with full item list
+- **Sticky Bottom Cart Bar with Progress Bar**: Shows live totals, savings, item count; includes an animated progress bar showing discount tier milestones and current progress
 - **Out-of-Stock Handling**: Disabled variants with "Sold Out" label
 - **New Product Badges**: "New!" badge on recently added variants
 - **AJAX Cart**: Add bundle without page reload, with success toast notifications
