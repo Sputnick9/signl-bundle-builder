@@ -1,4 +1,3 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +6,7 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
+  SheetDescription,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import {
@@ -18,17 +18,15 @@ import {
   Trash2,
   ArrowUp,
   Zap,
+  Eye,
+  Package,
 } from "lucide-react";
 import type { ProductType, CartItem, DiscountTier } from "@shared/schema";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { useState, useMemo } from "react";
 
 function formatPrice(cents: number): string {
   return "$" + (cents / 100).toFixed(2);
-}
-
-function formatPriceShort(cents: number): string {
-  return "$" + (cents / 100).toFixed(0);
 }
 
 interface CartItemResolved {
@@ -123,7 +121,11 @@ function TierProgressBar({ itemCount, discountTiers, discountPercent }: TierProg
         <div className="flex items-center justify-between mb-1.5">
           <div className="flex items-center gap-1.5">
             <Zap className="w-3.5 h-3.5 text-primary" />
-            {isMaxed ? (
+            {itemCount === 0 ? (
+              <span className="text-xs font-medium text-muted-foreground">
+                Add items to start saving!
+              </span>
+            ) : isMaxed ? (
               <span className="text-xs font-semibold text-primary">
                 Max discount unlocked! {discountPercent}% off
               </span>
@@ -203,17 +205,11 @@ export function StickyCartBar({
   const discount = Math.round(subtotal * (discountPercent / 100));
   const total = subtotal - discount;
   const nextTier = getNextTier(itemCount, sortedTiers);
-
-  if (itemCount === 0) return null;
+  const isEmpty = itemCount === 0;
 
   return (
     <>
-      <motion.div
-        initial={{ y: 100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 100, opacity: 0 }}
-        className="fixed bottom-0 left-0 right-0 z-50"
-      >
+      <div className="fixed bottom-0 left-0 right-0 z-50">
         <TierProgressBar
           itemCount={itemCount}
           discountTiers={sortedTiers}
@@ -224,51 +220,67 @@ export function StickyCartBar({
             <div className="flex items-center gap-3">
               <button
                 data-testid="button-view-bundle"
-                onClick={() => setShowSheet(true)}
-                className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                onClick={() => { if (!isEmpty) setShowSheet(true); }}
+                className={cn(
+                  "flex items-center gap-3 flex-1 min-w-0 text-left",
+                  isEmpty && "cursor-default"
+                )}
               >
                 <div className="relative">
                   <ShoppingCart className="w-6 h-6" />
-                  <span className="absolute -top-2 -right-2 w-5 h-5 bg-primary text-primary-foreground text-[10px] rounded-full flex items-center justify-center font-bold">
-                    {itemCount}
-                  </span>
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold text-lg" data-testid="text-total">
-                      {formatPrice(total)}
+                  {itemCount > 0 && (
+                    <span className="absolute -top-2 -right-2 w-5 h-5 bg-primary text-primary-foreground text-[10px] rounded-full flex items-center justify-center font-bold">
+                      {itemCount}
                     </span>
-                    {discount > 0 && (
-                      <span className="text-sm text-muted-foreground line-through">
-                        {formatPrice(subtotal)}
-                      </span>
-                    )}
-                  </div>
-                  {discount > 0 && (
-                    <p className="text-xs text-primary font-medium flex items-center gap-1">
-                      <Tag className="w-3 h-3" />
-                      You Save {formatPrice(discount)} ({discountPercent}% off)
-                    </p>
                   )}
                 </div>
 
-                <ChevronUp className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  {isEmpty ? (
+                    <span className="text-sm text-muted-foreground">
+                      Your bundle is empty
+                    </span>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-lg" data-testid="text-total">
+                          {formatPrice(total)}
+                        </span>
+                        {discount > 0 && (
+                          <span className="text-sm text-muted-foreground line-through">
+                            {formatPrice(subtotal)}
+                          </span>
+                        )}
+                      </div>
+                      {discount > 0 && (
+                        <p className="text-xs text-primary font-medium flex items-center gap-1">
+                          <Tag className="w-3 h-3" />
+                          You Save {formatPrice(discount)} ({discountPercent}% off)
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {!isEmpty && (
+                  <ChevronUp className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                )}
               </button>
 
               <Button
-                data-testid="button-add-to-cart"
-                onClick={onAddToCart}
-                disabled={isSubmitting || itemCount === 0}
-                className="flex-shrink-0"
+                data-testid="button-view-bundle-btn"
+                onClick={() => { if (!isEmpty) setShowSheet(true); }}
+                disabled={isEmpty}
+                className="flex-shrink-0 gap-2"
                 size="lg"
               >
-                {isSubmitting ? "Adding..." : "Add to Cart"}
+                <Eye className="w-4 h-4" />
+                View Bundle
               </Button>
             </div>
           </div>
         </div>
-      </motion.div>
+      </div>
 
       <Sheet open={showSheet} onOpenChange={setShowSheet}>
         <SheetContent side="bottom" className="max-h-[80vh]">
@@ -279,112 +291,125 @@ export function StickyCartBar({
                 <Badge>{discountPercent}% off</Badge>
               )}
             </SheetTitle>
+            <SheetDescription>
+              Review and manage items in your bundle
+            </SheetDescription>
           </SheetHeader>
 
-          <div className="overflow-y-auto max-h-[50vh] space-y-3 pb-4">
-            {resolved.map((item) => (
-              <div
-                key={item.variantId}
-                data-testid={`cart-item-${item.variantId}`}
-                className="flex items-center gap-3 py-2"
-              >
-                <div
-                  className="w-12 h-12 rounded-md flex-shrink-0"
-                  style={{
-                    background: `linear-gradient(135deg, ${item.gradientFrom}, ${item.gradientTo})`,
+          {resolved.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">
+              <Package className="w-10 h-10 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No items in your bundle yet.</p>
+              <p className="text-xs mt-1">Browse the products above to get started!</p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-y-auto max-h-[50vh] space-y-3 pb-4">
+                {resolved.map((item) => (
+                  <div
+                    key={item.variantId}
+                    data-testid={`cart-item-${item.variantId}`}
+                    className="flex items-center gap-3 py-2"
+                  >
+                    <div
+                      className="w-12 h-12 rounded-md flex-shrink-0"
+                      style={{
+                        background: `linear-gradient(135deg, ${item.gradientFrom}, ${item.gradientTo})`,
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {item.variantName}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {item.productTypeName}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="h-7 w-7"
+                        onClick={() => onRemoveVariant(item.variantId)}
+                        data-testid={`button-sheet-remove-${item.variantId}`}
+                      >
+                        {item.quantity === 1 ? (
+                          <Trash2 className="w-3 h-3" />
+                        ) : (
+                          <Minus className="w-3 h-3" />
+                        )}
+                      </Button>
+                      <span className="w-6 text-center text-sm font-semibold">
+                        {item.quantity}
+                      </span>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="h-7 w-7"
+                        onClick={() => onAddVariant(item.variantId)}
+                        data-testid={`button-sheet-add-${item.variantId}`}
+                      >
+                        <Plus className="w-3 h-3" />
+                      </Button>
+                    </div>
+                    <span className="text-sm font-semibold w-14 text-right flex-shrink-0">
+                      {formatPrice(item.price * item.quantity)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <Separator />
+
+              <div className="pt-4 space-y-2">
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span>{formatPrice(subtotal)}</span>
+                </div>
+                {discount > 0 && (
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <span className="text-primary flex items-center gap-1">
+                      <Tag className="w-3 h-3" />
+                      Bundle Savings ({discountPercent}%)
+                    </span>
+                    <span className="text-primary font-medium">
+                      -{formatPrice(discount)}
+                    </span>
+                  </div>
+                )}
+                <Separator />
+                <div className="flex items-center justify-between gap-2 font-bold text-lg pt-1">
+                  <span>Total</span>
+                  <span>{formatPrice(total)}</span>
+                </div>
+
+                {nextTier && (
+                  <p className="text-xs text-center text-primary pt-1 flex items-center justify-center gap-1">
+                    <ArrowUp className="w-3 h-3" />
+                    Add {nextTier.minItems - itemCount} more item
+                    {nextTier.minItems - itemCount !== 1 ? "s" : ""} to unlock{" "}
+                    {nextTier.discountPercent}% off!
+                  </p>
+                )}
+
+                <Button
+                  data-testid="button-add-to-cart-sheet"
+                  className="w-full gap-2"
+                  size="lg"
+                  disabled={isSubmitting || itemCount === 0}
+                  onClick={() => {
+                    onAddToCart();
+                    setShowSheet(false);
                   }}
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">
-                    {item.variantName}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {item.productTypeName}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    className="h-7 w-7"
-                    onClick={() => onRemoveVariant(item.variantId)}
-                    data-testid={`button-sheet-remove-${item.variantId}`}
-                  >
-                    {item.quantity === 1 ? (
-                      <Trash2 className="w-3 h-3" />
-                    ) : (
-                      <Minus className="w-3 h-3" />
-                    )}
-                  </Button>
-                  <span className="w-6 text-center text-sm font-semibold">
-                    {item.quantity}
-                  </span>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    className="h-7 w-7"
-                    onClick={() => onAddVariant(item.variantId)}
-                    data-testid={`button-sheet-add-${item.variantId}`}
-                  >
-                    <Plus className="w-3 h-3" />
-                  </Button>
-                </div>
-                <span className="text-sm font-semibold w-14 text-right flex-shrink-0">
-                  {formatPrice(item.price * item.quantity)}
-                </span>
+                >
+                  <ShoppingCart className="w-4 h-4" />
+                  {isSubmitting
+                    ? "Adding..."
+                    : `Add to Cart - ${formatPrice(total)}`}
+                </Button>
               </div>
-            ))}
-          </div>
-
-          <Separator />
-
-          <div className="pt-4 space-y-2">
-            <div className="flex items-center justify-between gap-2 text-sm">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span>{formatPrice(subtotal)}</span>
-            </div>
-            {discount > 0 && (
-              <div className="flex items-center justify-between gap-2 text-sm">
-                <span className="text-primary flex items-center gap-1">
-                  <Tag className="w-3 h-3" />
-                  Bundle Savings ({discountPercent}%)
-                </span>
-                <span className="text-primary font-medium">
-                  -{formatPrice(discount)}
-                </span>
-              </div>
-            )}
-            <Separator />
-            <div className="flex items-center justify-between gap-2 font-bold text-lg pt-1">
-              <span>Total</span>
-              <span>{formatPrice(total)}</span>
-            </div>
-
-            {nextTier && (
-              <p className="text-xs text-center text-primary pt-1 flex items-center justify-center gap-1">
-                <ArrowUp className="w-3 h-3" />
-                Add {nextTier.minItems - itemCount} more item
-                {nextTier.minItems - itemCount !== 1 ? "s" : ""} to unlock{" "}
-                {nextTier.discountPercent}% off!
-              </p>
-            )}
-
-            <Button
-              data-testid="button-add-to-cart-sheet"
-              className="w-full gap-2"
-              size="lg"
-              disabled={isSubmitting || itemCount === 0}
-              onClick={() => {
-                onAddToCart();
-                setShowSheet(false);
-              }}
-            >
-              <ShoppingCart className="w-4 h-4" />
-              {isSubmitting
-                ? "Adding..."
-                : `Add to Cart - ${formatPrice(total)}`}
-            </Button>
-          </div>
+            </>
+          )}
         </SheetContent>
       </Sheet>
     </>

@@ -257,6 +257,42 @@ const PRODUCT_TYPES: ProductType[] = [
       ["Spring Meadow", "Unscented"],
     ),
   },
+  {
+    id: 16,
+    name: "Shower Pouf",
+    price: 600,
+    category: "Wash",
+    gradientFrom: "#F0F9FF",
+    gradientTo: "#BAE6FD",
+    variants: makeVariants(16, ["Shower Pouf"]),
+  },
+  {
+    id: 17,
+    name: "Stain Remover Stick",
+    price: 900,
+    category: "Laundry",
+    gradientFrom: "#F0FDF4",
+    gradientTo: "#86EFAC",
+    variants: makeVariants(17, ["Stain Remover Stick"]),
+  },
+  {
+    id: 18,
+    name: "Deodorant Travel Mini",
+    price: 500,
+    category: "Deodorant",
+    gradientFrom: "#FFF1F2",
+    gradientTo: "#FECDD3",
+    variants: makeVariants(18, ["Deodorant Travel Mini"]),
+  },
+  {
+    id: 19,
+    name: "Exfoliating Body Bar",
+    price: 1000,
+    category: "Soap",
+    gradientFrom: "#FEF3C7",
+    gradientTo: "#FDE68A",
+    variants: makeVariants(19, ["Exfoliating Body Bar"]),
+  },
 ];
 
 export interface IStorage {

@@ -4,7 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ProductTypeCard, ExpandedVariantsPanel } from "@/components/product-type-card";
+import { ProductTypeCard, ExpandedVariantsPanel, isDirectAddProduct } from "@/components/product-type-card";
 import { StickyCartBar } from "@/components/bundle-summary";
 import {
   ShoppingBag,
@@ -271,7 +271,9 @@ export default function BundleBuilder() {
               const meta = CATEGORY_META[cat];
               const Icon = meta?.icon || Droplets;
 
-              const expandedInSection = products.find((p) => p.id === expandedTypeId);
+              const expandedInSection = products.find(
+                (p) => p.id === expandedTypeId && !isDirectAddProduct(p)
+              );
               const expandedIndex = expandedInSection
                 ? products.indexOf(expandedInSection)
                 : -1;
@@ -315,12 +317,13 @@ export default function BundleBuilder() {
                         >
                           <ProductTypeCard
                             productType={pt}
-                            isExpanded={expandedTypeId === pt.id}
-                            onToggleExpand={() =>
+                            isExpanded={expandedTypeId === pt.id && !isDirectAddProduct(pt)}
+                            onToggleExpand={() => {
+                              if (isDirectAddProduct(pt)) return;
                               setExpandedTypeId(
                                 expandedTypeId === pt.id ? null : pt.id
-                              )
-                            }
+                              );
+                            }}
                             cartItems={cartItems}
                             onAddVariant={handleAddVariant}
                             onRemoveVariant={handleRemoveVariant}
@@ -351,21 +354,17 @@ export default function BundleBuilder() {
         )}
       </main>
 
-      <AnimatePresence>
-        {totalItemCount > 0 && (
-          <StickyCartBar
-            cartItems={cartItems}
-            productTypes={allProducts}
-            discountTiers={discountTiers}
-            onAddVariant={handleAddVariant}
-            onRemoveVariant={handleRemoveVariant}
-            onAddToCart={handleAddToCart}
-            isSubmitting={addToCartMutation.isPending}
-          />
-        )}
-      </AnimatePresence>
+      <StickyCartBar
+        cartItems={cartItems}
+        productTypes={allProducts}
+        discountTiers={discountTiers}
+        onAddVariant={handleAddVariant}
+        onRemoveVariant={handleRemoveVariant}
+        onAddToCart={handleAddToCart}
+        isSubmitting={addToCartMutation.isPending}
+      />
 
-      <div className={cn(totalItemCount > 0 ? "h-40" : "h-8")} />
+      <div className="h-40" />
 
       <footer className="border-t py-8 text-center text-sm text-muted-foreground">
         <p>Shopify Bundle Builder Tool</p>

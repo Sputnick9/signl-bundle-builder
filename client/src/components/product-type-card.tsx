@@ -31,6 +31,11 @@ function formatPrice(cents: number): string {
   return "$" + (cents / 100).toFixed(0);
 }
 
+export function isDirectAddProduct(productType: ProductType): boolean {
+  const variants = productType.variants || [];
+  return variants.length <= 1;
+}
+
 interface ProductTypeCardProps {
   productType: ProductType;
   isExpanded: boolean;
@@ -51,24 +56,27 @@ export function ProductTypeCard({
   const Icon = categoryIcons[productType.category] || Droplets;
   const variants = productType.variants || [];
   const availableCount = variants.filter((v) => v.available).length;
+  const isDirect = isDirectAddProduct(productType);
+  const directVariant = isDirect ? variants[0] : null;
+
   const itemsInCart = (cartItems || [])
     .filter((ci) => variants.some((v) => v.id === ci.variantId))
     .reduce((sum, ci) => sum + ci.quantity, 0);
+
+  const directQty = directVariant
+    ? (cartItems || []).find((ci) => ci.variantId === directVariant.id)?.quantity || 0
+    : 0;
 
   return (
     <Card
       data-testid={`product-type-card-${productType.id}`}
       className={cn(
-        "transition-all duration-300 cursor-pointer",
-        isExpanded && "ring-2 ring-primary border-primary"
+        "transition-all duration-300",
+        !isDirect && "cursor-pointer",
+        isExpanded && !isDirect && "ring-2 ring-primary border-primary"
       )}
     >
-      <button
-        data-testid={`button-expand-${productType.id}`}
-        className="w-full text-left"
-        onClick={onToggleExpand}
-        aria-expanded={isExpanded}
-      >
+      {isDirect ? (
         <CardContent className="p-3 sm:p-4 flex flex-col items-center gap-2">
           <div
             className="w-full aspect-square rounded-lg flex-shrink-0 flex items-center justify-center"
@@ -89,27 +97,102 @@ export function ProductTypeCard({
             <p className="text-sm sm:text-base font-bold mt-0.5">
               {formatPrice(productType.price)}
             </p>
-            <div className="flex items-center justify-center gap-1 mt-1 flex-wrap">
-              <span className="text-[10px] sm:text-xs text-muted-foreground">
-                {availableCount} scents
-              </span>
-              {itemsInCart > 0 && (
-                <Badge variant="default" className="text-[10px] px-1.5 py-0">
-                  {itemsInCart} added
-                </Badge>
-              )}
-            </div>
           </div>
 
-          <div className="text-muted-foreground">
-            {isExpanded ? (
-              <ChevronUp className="w-4 h-4" />
+          {directVariant && directVariant.available ? (
+            directQty > 0 ? (
+              <div className="flex items-center gap-1 w-full justify-center">
+                <Button
+                  data-testid={`button-remove-variant-${directVariant.id}`}
+                  size="icon"
+                  variant="outline"
+                  className="h-8 w-8"
+                  onClick={() => onRemoveVariant(directVariant.id)}
+                >
+                  <Minus className="w-3.5 h-3.5" />
+                </Button>
+                <span
+                  className="w-8 text-center text-sm font-semibold"
+                  data-testid={`text-quantity-${directVariant.id}`}
+                >
+                  {directQty}
+                </span>
+                <Button
+                  data-testid={`button-add-variant-${directVariant.id}`}
+                  size="icon"
+                  variant="outline"
+                  className="h-8 w-8"
+                  onClick={() => onAddVariant(directVariant.id)}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </Button>
+              </div>
             ) : (
-              <ChevronDown className="w-4 h-4" />
-            )}
-          </div>
+              <Button
+                data-testid={`button-add-variant-${directVariant.id}`}
+                size="sm"
+                className="w-full"
+                onClick={() => onAddVariant(directVariant.id)}
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                Add
+              </Button>
+            )
+          ) : (
+            <Button size="sm" variant="secondary" className="w-full" disabled>
+              Sold Out
+            </Button>
+          )}
         </CardContent>
-      </button>
+      ) : (
+        <button
+          data-testid={`button-expand-${productType.id}`}
+          className="w-full text-left"
+          onClick={onToggleExpand}
+          aria-expanded={isExpanded}
+        >
+          <CardContent className="p-3 sm:p-4 flex flex-col items-center gap-2">
+            <div
+              className="w-full aspect-square rounded-lg flex-shrink-0 flex items-center justify-center"
+              style={{
+                background: `linear-gradient(135deg, ${productType.gradientFrom}, ${productType.gradientTo})`,
+              }}
+            >
+              <Icon
+                className="w-10 h-10 sm:w-12 sm:h-12"
+                style={{ color: productType.gradientTo, filter: "brightness(0.5)" }}
+              />
+            </div>
+
+            <div className="w-full text-center">
+              <h3 className="font-semibold text-xs sm:text-sm leading-tight line-clamp-2 min-h-[2rem]">
+                {productType.name}
+              </h3>
+              <p className="text-sm sm:text-base font-bold mt-0.5">
+                {formatPrice(productType.price)}
+              </p>
+              <div className="flex items-center justify-center gap-1 mt-1 flex-wrap">
+                <span className="text-[10px] sm:text-xs text-muted-foreground">
+                  {availableCount} scents
+                </span>
+                {itemsInCart > 0 && (
+                  <Badge variant="default" className="text-[10px] px-1.5 py-0">
+                    {itemsInCart} added
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            <div className="text-muted-foreground">
+              {isExpanded ? (
+                <ChevronUp className="w-4 h-4" />
+              ) : (
+                <ChevronDown className="w-4 h-4" />
+              )}
+            </div>
+          </CardContent>
+        </button>
+      )}
     </Card>
   );
 }
