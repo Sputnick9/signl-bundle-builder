@@ -1,105 +1,112 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ProductTypeCard } from "@/components/product-type-card";
+import { StickyCartBar } from "@/components/bundle-summary";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import { TierSelector } from "@/components/tier-selector";
-import { ProductCard } from "@/components/product-card";
-import { BundleSummary, MobileBottomBar } from "@/components/bundle-summary";
-import { ShoppingBag, Sparkles, Package } from "lucide-react";
-import type { Product, BundleTier } from "@shared/schema";
-import { motion } from "framer-motion";
+  ShoppingBag,
+  Sparkles,
+  Star,
+  Droplets,
+  Waves,
+  Bath,
+  Flower2,
+  Shirt,
+} from "lucide-react";
+import type { ProductType, CartItem, DiscountTier } from "@shared/schema";
+import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
 
-const CATEGORIES = ["All", "Deodorant", "Body Wash", "Body Cream"];
+const CATEGORY_META: Record<
+  string,
+  { icon: typeof Droplets; label: string }
+> = {
+  Deodorant: { icon: Droplets, label: "Deodorant" },
+  Wash: { icon: Waves, label: "Wash" },
+  Wipes: { icon: Sparkles, label: "Wipes" },
+  Soap: { icon: Bath, label: "Soap" },
+  "Body Cream": { icon: Flower2, label: "Body Cream" },
+  Laundry: { icon: Shirt, label: "Laundry" },
+};
 
 export default function BundleBuilder() {
-  const [selectedTierId, setSelectedTierId] = useState<number>(2);
-  const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
-  const [activeCategory, setActiveCategory] = useState("All");
+  const [activeCategory, setActiveCategory] = useState<string>("Deodorant");
+  const [expandedTypeId, setExpandedTypeId] = useState<number | null>(null);
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [cartCount, setCartCount] = useState(0);
-  const [showMobileSummary, setShowMobileSummary] = useState(false);
 
   const { toast } = useToast();
-  const isMobile = useIsMobile();
 
-  const { data: products = [], isLoading: productsLoading } = useQuery<Product[]>({
+  const { data: allProducts = [], isLoading: productsLoading } = useQuery<
+    ProductType[]
+  >({
     queryKey: ["/api/products"],
   });
 
-  const { data: tiers = [], isLoading: tiersLoading } = useQuery<BundleTier[]>({
-    queryKey: ["/api/tiers"],
+  const { data: discountTiers = [] } = useQuery<DiscountTier[]>({
+    queryKey: ["/api/discount-tiers"],
   });
 
-  const currentTier = tiers.find((t) => t.id === selectedTierId) || null;
-  const maxItems = currentTier?.itemCount || 0;
-
-  const selectedProducts = useMemo(
-    () =>
-      selectedProductIds
-        .map((id) => products.find((p) => p.id === id))
-        .filter(Boolean) as Product[],
-    [selectedProductIds, products]
-  );
+  const categories = useMemo(() => {
+    const cats = new Set(allProducts.map((p) => p.category));
+    return Array.from(cats);
+  }, [allProducts]);
 
   const filteredProducts = useMemo(
-    () =>
-      activeCategory === "All"
-        ? products
-        : products.filter((p) => p.category === activeCategory),
-    [products, activeCategory]
+    () => allProducts.filter((p) => p.category === activeCategory),
+    [allProducts, activeCategory]
   );
 
-  const handleTierChange = (tierId: number) => {
-    setSelectedTierId(tierId);
-    const newTier = tiers.find((t) => t.id === tierId);
-    if (newTier && selectedProductIds.length > newTier.itemCount) {
-      setSelectedProductIds((prev) => prev.slice(0, newTier.itemCount));
-    }
-  };
+  const totalItemCount = useMemo(
+    () => cartItems.reduce((sum, ci) => sum + ci.quantity, 0),
+    [cartItems]
+  );
 
-  const handleToggleProduct = (productId: number) => {
-    const idx = selectedProductIds.indexOf(productId);
-    if (idx >= 0) {
-      setSelectedProductIds((prev) => prev.filter((id) => id !== productId));
-    } else if (selectedProductIds.length < maxItems) {
-      setSelectedProductIds((prev) => [...prev, productId]);
-    } else {
-      toast({
-        title: "Bundle is full",
-        description: `You can only select ${maxItems} items in this bundle.`,
-        variant: "destructive",
-      });
-    }
-  };
+  const handleAddVariant = useCallback((variantId: number) => {
+    setCartItems((prev) => {
+      const existing = prev.find((ci) => ci.variantId === variantId);
+      if (existing) {
+        return prev.map((ci) =>
+          ci.variantId === variantId
+            ? { ...ci, quantity: ci.quantity + 1 }
+            : ci
+        );
+      }
+      return [...prev, { variantId, quantity: 1 }];
+    });
+  }, []);
 
-  const handleRemoveProduct = (productId: number) => {
-    setSelectedProductIds((prev) => prev.filter((id) => id !== productId));
-  };
+  const handleRemoveVariant = useCallback((variantId: number) => {
+    setCartItems((prev) => {
+      const existing = prev.find((ci) => ci.variantId === variantId);
+      if (!existing) return prev;
+      if (existing.quantity <= 1) {
+        return prev.filter((ci) => ci.variantId !== variantId);
+      }
+      return prev.map((ci) =>
+        ci.variantId === variantId
+          ? { ...ci, quantity: ci.quantity - 1 }
+          : ci
+      );
+    });
+  }, []);
 
   const addToCartMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/cart/bundle", {
-        tierId: selectedTierId,
-        productIds: selectedProductIds,
+        items: cartItems,
       });
       return res.json();
     },
     onSuccess: (data) => {
       setCartCount((prev) => prev + 1);
-      setSelectedProductIds([]);
-      setShowMobileSummary(false);
+      setCartItems([]);
       toast({
         title: "Bundle added to cart!",
-        description: `Your ${currentTier?.name} has been added. Total: $${(data.bundle.total / 100).toFixed(2)}`,
+        description: `${data.bundle.itemCount} items added. You saved ${(data.bundle.discount / 100).toFixed(2)}!`,
       });
     },
     onError: (err: Error) => {
@@ -112,20 +119,26 @@ export default function BundleBuilder() {
   });
 
   const handleAddToCart = () => {
-    if (selectedProductIds.length !== maxItems) return;
+    if (cartItems.length === 0) return;
     addToCartMutation.mutate();
   };
 
-  const isLoading = productsLoading || tiersLoading;
+  const handleCategoryChange = (category: string) => {
+    setActiveCategory(category);
+    setExpandedTypeId(null);
+  };
 
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between gap-4 h-16">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6">
+          <div className="flex items-center justify-between gap-4 h-14">
             <div className="flex items-center gap-2">
-              <Package className="w-6 h-6 text-primary" />
-              <span className="font-bold text-lg tracking-tight" data-testid="text-brand">
+              <Droplets className="w-5 h-5 text-primary" />
+              <span
+                className="font-bold text-base tracking-tight"
+                data-testid="text-brand"
+              >
                 BundleBuilder
               </span>
             </div>
@@ -148,163 +161,143 @@ export default function BundleBuilder() {
         </div>
       </header>
 
-      <section className="relative overflow-hidden bg-gradient-to-br from-primary/5 via-background to-primary/10 py-16 md:py-24">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,hsl(162_63%_41%/0.06),transparent_70%)]" />
-        <div className="relative max-w-4xl mx-auto text-center px-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <Badge variant="secondary" className="mb-4 gap-1">
-              <Sparkles className="w-3 h-3" />
-              Save up to 20%
-            </Badge>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight">
-              Build Your Custom Bundle
-            </h1>
-            <p className="text-base sm:text-lg text-muted-foreground mt-4 max-w-2xl mx-auto">
-              Mix and match your favorite products. The more you bundle, the more you save.
-            </p>
-          </motion.div>
+      <section className="bg-gradient-to-b from-primary/5 to-background py-8 sm:py-12">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-8">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-0.5 text-amber-500">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Star key={i} className="w-4 h-4 fill-current" />
+                  ))}
+                </div>
+                <span
+                  className="text-sm text-muted-foreground"
+                  data-testid="text-reviews"
+                >
+                  964 reviews
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
+                Build Your
+                <br />
+                <span className="text-primary">Bundle</span>
+              </h1>
+              <p className="text-sm sm:text-base text-muted-foreground mt-3 max-w-md">
+                Save up to 30% — the more you add to your bundle, the more you
+                save! This offer cannot be combined with any other offers.
+              </p>
+            </div>
+            <div className="hidden sm:block flex-shrink-0">
+              <div className="w-48 h-32 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
+                <div className="text-center">
+                  <p className="text-3xl font-bold text-primary">30%</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    max savings
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
-        <section className="mb-10">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
-              1
-            </div>
-            <h2 className="text-xl font-semibold">Choose Your Bundle Size</h2>
-          </div>
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="mb-6 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <div className="flex gap-2 sm:gap-3 min-w-max sm:min-w-0 sm:flex-wrap">
+            {categories.map((cat) => {
+              const meta = CATEGORY_META[cat];
+              const Icon = meta?.icon || Droplets;
+              const isActive = activeCategory === cat;
 
-          {isLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-48 rounded-xl" />
-              ))}
-            </div>
+              return (
+                <button
+                  key={cat}
+                  data-testid={`tab-${cat.toLowerCase().replace(/\s+/g, "-")}`}
+                  onClick={() => handleCategoryChange(cat)}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2.5 rounded-full border text-sm font-medium transition-all duration-200 whitespace-nowrap",
+                    isActive
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-card text-foreground border-border hover-elevate"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0",
+                      isActive
+                        ? "bg-primary-foreground/20"
+                        : "bg-muted"
+                    )}
+                  >
+                    <Icon className="w-4 h-4" />
+                  </div>
+                  {meta?.label || cat}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {productsLoading ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-28 rounded-xl" />
+            ))
           ) : (
-            <TierSelector
-              tiers={tiers}
-              selectedTierId={selectedTierId}
-              onSelect={handleTierChange}
-            />
-          )}
-        </section>
-
-        <section>
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
-              2
-            </div>
-            <h2 className="text-xl font-semibold">Select Your Products</h2>
-          </div>
-
-          <div className="flex flex-col lg:flex-row gap-6">
-            <div className="flex-1 min-w-0">
-              <Tabs
-                value={activeCategory}
-                onValueChange={setActiveCategory}
-                className="mb-6"
+            filteredProducts.map((pt, index) => (
+              <motion.div
+                key={pt.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05, duration: 0.3 }}
               >
-                <TabsList data-testid="tabs-category">
-                  {CATEGORIES.map((cat) => (
-                    <TabsTrigger
-                      key={cat}
-                      value={cat}
-                      data-testid={`tab-${cat.toLowerCase().replace(/\s+/g, "-")}`}
-                    >
-                      {cat}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
+                <ProductTypeCard
+                  productType={pt}
+                  isExpanded={expandedTypeId === pt.id}
+                  onToggleExpand={() =>
+                    setExpandedTypeId(
+                      expandedTypeId === pt.id ? null : pt.id
+                    )
+                  }
+                  cartItems={cartItems}
+                  onAddVariant={handleAddVariant}
+                  onRemoveVariant={handleRemoveVariant}
+                />
+              </motion.div>
+            ))
+          )}
 
-              {isLoading ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {Array.from({ length: 8 }).map((_, i) => (
-                    <Skeleton key={i} className="h-72 rounded-xl" />
-                  ))}
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {filteredProducts.map((product) => (
-                    <ProductCard
-                      key={product.id}
-                      product={product}
-                      isSelected={selectedProductIds.includes(product.id)}
-                      onToggle={handleToggleProduct}
-                      disabled={selectedProductIds.length >= maxItems}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {!isLoading && filteredProducts.length === 0 && (
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground">
-                    No products in this category.
-                  </p>
-                </div>
-              )}
+          {!productsLoading && filteredProducts.length === 0 && (
+            <div className="text-center py-16">
+              <p className="text-muted-foreground">
+                No products in this category.
+              </p>
             </div>
-
-            {!isMobile && (
-              <div className="w-[340px] flex-shrink-0">
-                <div className="sticky top-24">
-                  <BundleSummary
-                    tier={currentTier}
-                    selectedProducts={selectedProducts}
-                    onRemoveProduct={handleRemoveProduct}
-                    onAddToCart={handleAddToCart}
-                    isSubmitting={addToCartMutation.isPending}
-                    maxItems={maxItems}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
+          )}
+        </div>
       </main>
 
-      {isMobile && (
-        <>
-          <MobileBottomBar
-            tier={currentTier}
-            selectedProducts={selectedProducts}
-            onViewBundle={() => setShowMobileSummary(true)}
+      <AnimatePresence>
+        {totalItemCount > 0 && (
+          <StickyCartBar
+            cartItems={cartItems}
+            productTypes={allProducts}
+            discountTiers={discountTiers}
+            onAddVariant={handleAddVariant}
+            onRemoveVariant={handleRemoveVariant}
             onAddToCart={handleAddToCart}
             isSubmitting={addToCartMutation.isPending}
-            maxItems={maxItems}
           />
+        )}
+      </AnimatePresence>
 
-          <Sheet open={showMobileSummary} onOpenChange={setShowMobileSummary}>
-            <SheetContent side="bottom" className="max-h-[80vh]">
-              <SheetHeader>
-                <SheetTitle>Your Bundle</SheetTitle>
-              </SheetHeader>
-              <div className="mt-4 overflow-y-auto">
-                <BundleSummary
-                  tier={currentTier}
-                  selectedProducts={selectedProducts}
-                  onRemoveProduct={handleRemoveProduct}
-                  onAddToCart={handleAddToCart}
-                  isSubmitting={addToCartMutation.isPending}
-                  maxItems={maxItems}
-                />
-              </div>
-            </SheetContent>
-          </Sheet>
+      <div className={cn(totalItemCount > 0 ? "h-32" : "h-8")} />
 
-          <div className="h-24" />
-        </>
-      )}
-
-      <footer className="border-t mt-16 py-8 text-center text-sm text-muted-foreground">
+      <footer className="border-t py-8 text-center text-sm text-muted-foreground">
         <p>Shopify Bundle Builder Tool</p>
       </footer>
     </div>
   );
 }
+

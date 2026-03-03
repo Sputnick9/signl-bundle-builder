@@ -1,36 +1,55 @@
 import { z } from "zod";
 
-export interface Product {
+export interface ScentVariant {
   id: number;
   name: string;
-  description: string;
-  price: number;
-  category: string;
+  productTypeId: number;
   available: boolean;
   gradientFrom: string;
   gradientTo: string;
+  isNew?: boolean;
 }
 
-export interface BundleTier {
+export interface ProductType {
   id: number;
   name: string;
-  itemCount: number;
+  price: number;
+  category: string;
+  gradientFrom: string;
+  gradientTo: string;
+  variants: ScentVariant[];
+}
+
+export interface DiscountTier {
+  minItems: number;
   discountPercent: number;
-  description: string;
-  badge: string;
+}
+
+export interface CartItem {
+  variantId: number;
+  quantity: number;
 }
 
 export interface CartBundle {
-  tier: BundleTier;
-  items: Product[];
+  items: Array<{
+    variant: ScentVariant;
+    productType: ProductType;
+    quantity: number;
+  }>;
+  itemCount: number;
   subtotal: number;
+  discountPercent: number;
   discount: number;
   total: number;
 }
 
 export const addToCartSchema = z.object({
-  tierId: z.number(),
-  productIds: z.array(z.number()).min(1),
+  items: z.array(
+    z.object({
+      variantId: z.number(),
+      quantity: z.number().min(1),
+    })
+  ).min(1),
 });
 
 export type AddToCartRequest = z.infer<typeof addToCartSchema>;

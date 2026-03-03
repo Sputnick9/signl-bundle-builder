@@ -1,211 +1,349 @@
-import { type Product, type BundleTier, type CartBundle, type AddToCartRequest } from "@shared/schema";
+import {
+  type ProductType,
+  type ScentVariant,
+  type DiscountTier,
+  type CartBundle,
+  type AddToCartRequest,
+} from "@shared/schema";
 
-const PRODUCTS: Product[] = [
+const DISCOUNT_TIERS: DiscountTier[] = [
+  { minItems: 2, discountPercent: 10 },
+  { minItems: 3, discountPercent: 15 },
+  { minItems: 4, discountPercent: 20 },
+  { minItems: 5, discountPercent: 25 },
+  { minItems: 6, discountPercent: 30 },
+];
+
+const SCENTS_CLASSIC = [
+  "Vanilla Bliss",
+  "Minted Cucumber",
+  "Soft Powder",
+  "Toasted Coconut",
+  "Clean Tangerine",
+  "Peony Rose",
+  "Lavender Sage",
+  "Fresh Alpine",
+  "Unscented",
+];
+
+const SCENT_GRADIENTS: Record<string, [string, string]> = {
+  "Vanilla Bliss": ["#FFF8E7", "#F5DEB3"],
+  "Minted Cucumber": ["#E8F8F5", "#76D7C4"],
+  "Soft Powder": ["#F8E8F0", "#D4A5C0"],
+  "Toasted Coconut": ["#FDE68A", "#D97706"],
+  "Clean Tangerine": ["#FFEDD5", "#FDBA74"],
+  "Peony Rose": ["#FFE4E6", "#FDA4AF"],
+  "Lavender Sage": ["#E8D5F5", "#C4B5FD"],
+  "Fresh Alpine": ["#D1FAE5", "#6EE7B7"],
+  "Unscented": ["#F3F4F6", "#D1D5DB"],
+  "Fresh Spring": ["#ECFDF5", "#A7F3D0"],
+  "Citrus Burst": ["#FEF9C3", "#FACC15"],
+  "Ocean Breeze": ["#E0F2FE", "#7DD3FC"],
+  "Jasmine Rose": ["#FCE7F3", "#F9A8D4"],
+  "Warm Vanilla": ["#FEF3C7", "#FCD34D"],
+  "Cotton Blossom": ["#F0FDF4", "#BBF7D0"],
+  "Coconut Cream": ["#FFFBEB", "#FDE68A"],
+  "Lemon Zest": ["#FEF9C3", "#FDE047"],
+  "Eucalyptus Mint": ["#CCFBF1", "#2DD4BF"],
+  "Spring Meadow": ["#F0FDF4", "#86EFAC"],
+  "Wildflower": ["#FDF4FF", "#E879F9"],
+};
+
+function getGradient(name: string): [string, string] {
+  return SCENT_GRADIENTS[name] || ["#F3F4F6", "#D1D5DB"];
+}
+
+let variantId = 1;
+
+function makeVariants(
+  productTypeId: number,
+  scents: string[],
+  unavailable: string[] = [],
+  newScents: string[] = []
+): ScentVariant[] {
+  return scents.map((name) => ({
+    id: variantId++,
+    name,
+    productTypeId,
+    available: !unavailable.includes(name),
+    gradientFrom: getGradient(name)[0],
+    gradientTo: getGradient(name)[1],
+    isNew: newScents.includes(name),
+  }));
+}
+
+const PRODUCT_TYPES: ProductType[] = [
   {
     id: 1,
-    name: "Lavender Sage",
-    description: "A calming blend of lavender and sage for all-day freshness",
-    price: 1599,
+    name: "Aluminum-Free Solid Stick",
+    price: 1500,
     category: "Deodorant",
-    available: true,
-    gradientFrom: "#E8D5F5",
-    gradientTo: "#C4B5FD",
+    gradientFrom: "#F0FDF4",
+    gradientTo: "#BBF7D0",
+    variants: makeVariants(1, SCENTS_CLASSIC),
   },
   {
     id: 2,
-    name: "Clean Tangerine",
-    description: "Bright citrus scent that energizes your day",
-    price: 1599,
+    name: "Clinical Strength Sweat Control Solid",
+    price: 1500,
     category: "Deodorant",
-    available: true,
-    gradientFrom: "#FFEDD5",
-    gradientTo: "#FDBA74",
+    gradientFrom: "#EFF6FF",
+    gradientTo: "#93C5FD",
+    variants: makeVariants(
+      2,
+      ["Vanilla Bliss", "Fresh Spring", "Soft Powder"],
+      [],
+      ["Vanilla Bliss", "Fresh Spring"]
+    ),
   },
   {
     id: 3,
-    name: "Silver Spruce",
-    description: "Crisp and woodsy, inspired by mountain forests",
-    price: 1599,
+    name: "Aluminum-Free Spray",
+    price: 1500,
     category: "Deodorant",
-    available: true,
-    gradientFrom: "#D1FAE5",
-    gradientTo: "#6EE7B7",
+    gradientFrom: "#F5F3FF",
+    gradientTo: "#C4B5FD",
+    variants: makeVariants(
+      3,
+      ["Vanilla Bliss", "Soft Powder", "Lavender Sage", "Unscented", "Clean Tangerine"],
+      ["Unscented"],
+      ["Vanilla Bliss"]
+    ),
   },
   {
     id: 4,
-    name: "Jasmine Rose",
-    description: "Delicate floral notes for a sophisticated touch",
-    price: 1599,
+    name: "Sweat Control Spray",
+    price: 1500,
     category: "Deodorant",
-    available: true,
-    gradientFrom: "#FFE4E6",
-    gradientTo: "#FDA4AF",
+    gradientFrom: "#ECFDF5",
+    gradientTo: "#6EE7B7",
+    variants: makeVariants(
+      4,
+      ["Vanilla Bliss", "Soft Powder", "Clean Tangerine"],
+      [],
+      ["Vanilla Bliss", "Soft Powder", "Clean Tangerine"]
+    ),
   },
   {
     id: 5,
-    name: "Coconut Crush",
-    description: "Tropical coconut vibes that last all day",
-    price: 1599,
+    name: "Aluminum-Free Cream Tube",
+    price: 2000,
     category: "Deodorant",
-    available: true,
-    gradientFrom: "#FEF3C7",
-    gradientTo: "#FCD34D",
+    gradientFrom: "#FFF7ED",
+    gradientTo: "#FDBA74",
+    variants: makeVariants(5, SCENTS_CLASSIC),
   },
   {
     id: 6,
-    name: "Cool Cucumber",
-    description: "Refreshing and clean, perfect for sensitive skin",
-    price: 1499,
+    name: "Sweat Control Tube",
+    price: 2000,
     category: "Deodorant",
-    available: true,
-    gradientFrom: "#ECFDF5",
-    gradientTo: "#A7F3D0",
+    gradientFrom: "#FDF2F8",
+    gradientTo: "#F9A8D4",
+    variants: makeVariants(
+      6,
+      ["Soft Powder", "Clean Tangerine", "Lavender Sage", "Unscented"],
+      ["Soft Powder", "Lavender Sage"]
+    ),
   },
   {
     id: 7,
-    name: "Peony Rose",
-    description: "Luxurious peony and rose body wash for silky skin",
-    price: 1299,
-    category: "Body Wash",
-    available: true,
-    gradientFrom: "#FCE7F3",
-    gradientTo: "#F9A8D4",
+    name: "Aluminum-Free Cream Stick",
+    price: 1500,
+    category: "Deodorant",
+    gradientFrom: "#FFFBEB",
+    gradientTo: "#FDE68A",
+    variants: makeVariants(7, SCENTS_CLASSIC),
   },
   {
     id: 8,
-    name: "Fresh Alpine",
-    description: "Invigorating alpine herbs cleanse and refresh",
-    price: 1299,
-    category: "Body Wash",
-    available: true,
-    gradientFrom: "#CCFBF1",
-    gradientTo: "#2DD4BF",
+    name: "Acidified Body Wash",
+    price: 1500,
+    category: "Wash",
+    gradientFrom: "#E0F2FE",
+    gradientTo: "#7DD3FC",
+    variants: makeVariants(
+      8,
+      ["Vanilla Bliss", "Soft Powder", "Toasted Coconut", "Clean Tangerine", "Lavender Sage", "Fresh Alpine", "Unscented"],
+    ),
   },
   {
     id: 9,
-    name: "Citrus Grove",
-    description: "Zesty lemon and grapefruit revitalize your skin",
-    price: 1299,
-    category: "Body Wash",
-    available: true,
-    gradientFrom: "#FEF9C3",
-    gradientTo: "#FACC15",
+    name: "Moisturizing Body Wash",
+    price: 1800,
+    category: "Wash",
+    gradientFrom: "#FCE7F3",
+    gradientTo: "#F9A8D4",
+    variants: makeVariants(
+      9,
+      ["Warm Vanilla", "Jasmine Rose", "Coconut Cream"],
+      [],
+      ["Warm Vanilla", "Jasmine Rose", "Coconut Cream"]
+    ),
   },
   {
     id: 10,
-    name: "Toasted Coconut",
-    description: "Rich, deeply moisturizing body cream with warm coconut",
-    price: 1899,
-    category: "Body Cream",
-    available: true,
-    gradientFrom: "#FDE68A",
-    gradientTo: "#D97706",
+    name: "Deodorant Wipes (24 ct)",
+    price: 1000,
+    category: "Wipes",
+    gradientFrom: "#F0FDF4",
+    gradientTo: "#86EFAC",
+    variants: makeVariants(
+      10,
+      ["Soft Powder", "Toasted Coconut", "Clean Tangerine", "Lavender Sage", "Unscented"],
+    ),
   },
   {
     id: 11,
-    name: "Vanilla Bean",
-    description: "Velvety vanilla-infused cream for ultimate hydration",
-    price: 1899,
-    category: "Body Cream",
-    available: true,
-    gradientFrom: "#FDF4FF",
-    gradientTo: "#E879F9",
+    name: "Flushable Wipes (48 ct)",
+    price: 800,
+    category: "Wipes",
+    gradientFrom: "#ECFDF5",
+    gradientTo: "#A7F3D0",
+    variants: makeVariants(
+      11,
+      ["Fresh Spring", "Unscented"],
+      [],
+      ["Fresh Spring"]
+    ),
   },
   {
     id: 12,
-    name: "Shea Butter",
-    description: "Pure shea butter formula for deep nourishment",
-    price: 1899,
+    name: "Natural Soap Bar",
+    price: 800,
+    category: "Soap",
+    gradientFrom: "#FFFBEB",
+    gradientTo: "#FCD34D",
+    variants: makeVariants(
+      12,
+      ["Lavender Sage", "Fresh Alpine", "Warm Vanilla", "Unscented"],
+    ),
+  },
+  {
+    id: 13,
+    name: "Whipped Body Cream",
+    price: 1800,
     category: "Body Cream",
-    available: false,
-    gradientFrom: "#F5F5F4",
-    gradientTo: "#A8A29E",
-  },
-];
-
-const TIERS: BundleTier[] = [
-  {
-    id: 1,
-    name: "Starter Bundle",
-    itemCount: 3,
-    discountPercent: 10,
-    description: "Perfect for trying new scents",
-    badge: "",
+    gradientFrom: "#FDF4FF",
+    gradientTo: "#E879F9",
+    variants: makeVariants(
+      13,
+      ["Vanilla Bliss", "Toasted Coconut", "Lavender Sage", "Unscented"],
+    ),
   },
   {
-    id: 2,
-    name: "Value Bundle",
-    itemCount: 5,
-    discountPercent: 15,
-    description: "Our most popular bundle size",
-    badge: "Most Popular",
+    id: 14,
+    name: "Brightening Body Cream",
+    price: 2000,
+    category: "Body Cream",
+    gradientFrom: "#FEF3C7",
+    gradientTo: "#F59E0B",
+    variants: makeVariants(
+      14,
+      ["Vanilla Bliss", "Soft Powder"],
+      [],
+      ["Vanilla Bliss", "Soft Powder"]
+    ),
   },
   {
-    id: 3,
-    name: "Ultimate Bundle",
-    itemCount: 7,
-    discountPercent: 20,
-    description: "Maximum savings for bundle lovers",
-    badge: "Best Value",
+    id: 15,
+    name: "Laundry Booster",
+    price: 2200,
+    category: "Laundry",
+    gradientFrom: "#EFF6FF",
+    gradientTo: "#60A5FA",
+    variants: makeVariants(
+      15,
+      ["Spring Meadow", "Unscented"],
+    ),
   },
 ];
 
 export interface IStorage {
-  getProducts(): Promise<Product[]>;
-  getProductById(id: number): Promise<Product | undefined>;
-  getTiers(): Promise<BundleTier[]>;
-  getTierById(id: number): Promise<BundleTier | undefined>;
+  getProductTypes(): Promise<ProductType[]>;
+  getProductTypesByCategory(category: string): Promise<ProductType[]>;
+  getCategories(): Promise<string[]>;
+  getDiscountTiers(): Promise<DiscountTier[]>;
+  getDiscountForCount(itemCount: number): number;
   createCartBundle(data: AddToCartRequest): Promise<CartBundle>;
 }
 
 export class MemStorage implements IStorage {
-  private cart: CartBundle[] = [];
-
-  async getProducts(): Promise<Product[]> {
-    return PRODUCTS;
+  async getProductTypes(): Promise<ProductType[]> {
+    return PRODUCT_TYPES;
   }
 
-  async getProductById(id: number): Promise<Product | undefined> {
-    return PRODUCTS.find((p) => p.id === id);
+  async getProductTypesByCategory(category: string): Promise<ProductType[]> {
+    return PRODUCT_TYPES.filter((p) => p.category === category);
   }
 
-  async getTiers(): Promise<BundleTier[]> {
-    return TIERS;
+  async getCategories(): Promise<string[]> {
+    const cats = new Set(PRODUCT_TYPES.map((p) => p.category));
+    return Array.from(cats);
   }
 
-  async getTierById(id: number): Promise<BundleTier | undefined> {
-    return TIERS.find((t) => t.id === id);
+  async getDiscountTiers(): Promise<DiscountTier[]> {
+    return DISCOUNT_TIERS;
+  }
+
+  getDiscountForCount(itemCount: number): number {
+    let discount = 0;
+    for (const tier of DISCOUNT_TIERS) {
+      if (itemCount >= tier.minItems) {
+        discount = tier.discountPercent;
+      }
+    }
+    return discount;
   }
 
   async createCartBundle(data: AddToCartRequest): Promise<CartBundle> {
-    const tier = TIERS.find((t) => t.id === data.tierId);
-    if (!tier) {
-      throw new Error("Invalid tier");
-    }
+    const bundleItems: CartBundle["items"] = [];
+    let totalItemCount = 0;
 
-    if (data.productIds.length !== tier.itemCount) {
-      throw new Error(`Bundle requires exactly ${tier.itemCount} items`);
-    }
+    for (const item of data.items) {
+      let foundVariant: ScentVariant | undefined;
+      let foundType: ProductType | undefined;
 
-    const items: Product[] = [];
-    for (const pid of data.productIds) {
-      const product = PRODUCTS.find((p) => p.id === pid);
-      if (!product) {
-        throw new Error(`Product ${pid} not found`);
+      for (const pt of PRODUCT_TYPES) {
+        const v = pt.variants.find((sv) => sv.id === item.variantId);
+        if (v) {
+          foundVariant = v;
+          foundType = pt;
+          break;
+        }
       }
-      if (!product.available) {
-        throw new Error(`Product ${product.name} is out of stock`);
+
+      if (!foundVariant || !foundType) {
+        throw new Error(`Variant ${item.variantId} not found`);
       }
-      items.push(product);
+      if (!foundVariant.available) {
+        throw new Error(`${foundVariant.name} (${foundType.name}) is out of stock`);
+      }
+
+      bundleItems.push({
+        variant: foundVariant,
+        productType: foundType,
+        quantity: item.quantity,
+      });
+      totalItemCount += item.quantity;
     }
 
-    const subtotal = items.reduce((sum, item) => sum + item.price, 0);
-    const discount = Math.round(subtotal * (tier.discountPercent / 100));
+    const subtotal = bundleItems.reduce(
+      (sum, bi) => sum + bi.productType.price * bi.quantity,
+      0
+    );
+    const discountPercent = this.getDiscountForCount(totalItemCount);
+    const discount = Math.round(subtotal * (discountPercent / 100));
     const total = subtotal - discount;
 
-    const bundle: CartBundle = { tier, items, subtotal, discount, total };
-    this.cart.push(bundle);
-    return bundle;
+    return {
+      items: bundleItems,
+      itemCount: totalItemCount,
+      subtotal,
+      discountPercent,
+      discount,
+      total,
+    };
   }
 }
 

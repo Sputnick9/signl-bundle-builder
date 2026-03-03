@@ -1,244 +1,306 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { X, ShoppingCart, Package, Tag, ArrowRight } from "lucide-react";
-import type { Product, BundleTier } from "@shared/schema";
+import {
+  ShoppingCart,
+  Tag,
+  ChevronUp,
+  Minus,
+  Plus,
+  Trash2,
+  ArrowUp,
+} from "lucide-react";
+import type { ProductType, CartItem, DiscountTier } from "@shared/schema";
 import { motion, AnimatePresence } from "framer-motion";
+import { useState } from "react";
 
 function formatPrice(cents: number): string {
-  return (cents / 100).toFixed(2);
+  return "$" + (cents / 100).toFixed(2);
 }
 
-interface BundleSummaryProps {
-  tier: BundleTier | null;
-  selectedProducts: Product[];
-  onRemoveProduct: (productId: number) => void;
+function formatPriceShort(cents: number): string {
+  return "$" + (cents / 100).toFixed(0);
+}
+
+interface CartItemResolved {
+  variantId: number;
+  variantName: string;
+  productTypeName: string;
+  price: number;
+  quantity: number;
+  gradientFrom: string;
+  gradientTo: string;
+}
+
+interface StickyCartBarProps {
+  cartItems: CartItem[];
+  productTypes: ProductType[];
+  discountTiers: DiscountTier[];
+  onAddVariant: (variantId: number) => void;
+  onRemoveVariant: (variantId: number) => void;
   onAddToCart: () => void;
   isSubmitting: boolean;
-  maxItems: number;
 }
 
-export function BundleSummary({
-  tier,
-  selectedProducts,
-  onRemoveProduct,
+function resolveCartItems(
+  cartItems: CartItem[],
+  productTypes: ProductType[]
+): CartItemResolved[] {
+  return cartItems
+    .map((ci) => {
+      for (const pt of productTypes) {
+        const v = pt.variants.find((sv) => sv.id === ci.variantId);
+        if (v) {
+          return {
+            variantId: ci.variantId,
+            variantName: v.name,
+            productTypeName: pt.name,
+            price: pt.price,
+            quantity: ci.quantity,
+            gradientFrom: v.gradientFrom,
+            gradientTo: v.gradientTo,
+          };
+        }
+      }
+      return null;
+    })
+    .filter(Boolean) as CartItemResolved[];
+}
+
+function getDiscountForCount(
+  itemCount: number,
+  discountTiers: DiscountTier[]
+): number {
+  let d = 0;
+  for (const t of discountTiers) {
+    if (itemCount >= t.minItems) d = t.discountPercent;
+  }
+  return d;
+}
+
+function getNextTier(
+  itemCount: number,
+  discountTiers: DiscountTier[]
+): DiscountTier | null {
+  for (const t of discountTiers) {
+    if (itemCount < t.minItems) return t;
+  }
+  return null;
+}
+
+export function StickyCartBar({
+  cartItems,
+  productTypes,
+  discountTiers,
+  onAddVariant,
+  onRemoveVariant,
   onAddToCart,
   isSubmitting,
-  maxItems,
-}: BundleSummaryProps) {
-  const selectedCount = selectedProducts.length;
-  const progress = maxItems > 0 ? (selectedCount / maxItems) * 100 : 0;
-  const isFull = selectedCount >= maxItems;
+}: StickyCartBarProps) {
+  const [showSheet, setShowSheet] = useState(false);
 
-  const subtotal = selectedProducts.reduce((sum, p) => sum + p.price, 0);
-  const discountPercent = tier?.discountPercent || 0;
+  const resolved = resolveCartItems(cartItems, productTypes);
+  const itemCount = cartItems.reduce((sum, ci) => sum + ci.quantity, 0);
+  const subtotal = resolved.reduce((sum, r) => sum + r.price * r.quantity, 0);
+  const discountPercent = getDiscountForCount(itemCount, discountTiers);
   const discount = Math.round(subtotal * (discountPercent / 100));
   const total = subtotal - discount;
+  const nextTier = getNextTier(itemCount, discountTiers);
 
-  const emptySlots = maxItems - selectedCount;
-
-  if (!tier) {
-    return (
-      <Card>
-        <CardContent className="p-6 text-center">
-          <Package className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
-          <p className="text-muted-foreground text-sm">
-            Choose a bundle size to get started
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
+  if (itemCount === 0) return null;
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between gap-2">
-          <CardTitle className="text-lg">Your Bundle</CardTitle>
-          <Badge variant="secondary">
-            {selectedCount}/{maxItems}
-          </Badge>
-        </div>
-        <Progress
-          value={progress}
-          className="h-2 mt-2"
-          data-testid="progress-bundle"
-        />
-        <p className="text-xs text-muted-foreground mt-1">
-          {isFull
-            ? "Bundle complete! Ready to add to cart."
-            : `Select ${emptySlots} more item${emptySlots !== 1 ? "s" : ""}`}
-        </p>
-      </CardHeader>
+    <>
+      <motion.div
+        initial={{ y: 100, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 100, opacity: 0 }}
+        className="fixed bottom-0 left-0 right-0 z-50"
+      >
+        {nextTier && (
+          <div className="bg-primary/10 text-center py-1.5 px-4 text-xs font-medium border-t border-primary/20">
+            <span className="text-primary">
+              Add {nextTier.minItems - itemCount} more to save{" "}
+              {nextTier.discountPercent}%!
+            </span>
+          </div>
+        )}
+        <div className="bg-card border-t border-border shadow-lg">
+          <div className="max-w-7xl mx-auto px-4 py-3">
+            <div className="flex items-center gap-3">
+              <button
+                data-testid="button-view-bundle"
+                onClick={() => setShowSheet(true)}
+                className="flex items-center gap-3 flex-1 min-w-0 text-left"
+              >
+                <div className="relative">
+                  <ShoppingCart className="w-6 h-6" />
+                  <span className="absolute -top-2 -right-2 w-5 h-5 bg-primary text-primary-foreground text-[10px] rounded-full flex items-center justify-center font-bold">
+                    {itemCount}
+                  </span>
+                </div>
 
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-4 gap-2">
-          <AnimatePresence mode="popLayout">
-            {selectedProducts.map((product) => (
-              <motion.div
-                key={product.id}
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0, opacity: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                className="relative group"
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-lg" data-testid="text-total">
+                      {formatPrice(total)}
+                    </span>
+                    {discount > 0 && (
+                      <span className="text-sm text-muted-foreground line-through">
+                        {formatPrice(subtotal)}
+                      </span>
+                    )}
+                  </div>
+                  {discount > 0 && (
+                    <p className="text-xs text-primary font-medium flex items-center gap-1">
+                      <Tag className="w-3 h-3" />
+                      You Save {formatPrice(discount)} ({discountPercent}% off)
+                    </p>
+                  )}
+                </div>
+
+                <ChevronUp className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+              </button>
+
+              <Button
+                data-testid="button-add-to-cart"
+                onClick={onAddToCart}
+                disabled={isSubmitting || itemCount === 0}
+                className="flex-shrink-0"
+                size="lg"
+              >
+                {isSubmitting ? "Adding..." : "Add to Cart"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
+      <Sheet open={showSheet} onOpenChange={setShowSheet}>
+        <SheetContent side="bottom" className="max-h-[80vh]">
+          <SheetHeader className="pb-4">
+            <SheetTitle className="flex items-center justify-between gap-2">
+              <span>Your Bundle ({itemCount} items)</span>
+              {discountPercent > 0 && (
+                <Badge>{discountPercent}% off</Badge>
+              )}
+            </SheetTitle>
+          </SheetHeader>
+
+          <div className="overflow-y-auto max-h-[50vh] space-y-3 pb-4">
+            {resolved.map((item) => (
+              <div
+                key={item.variantId}
+                data-testid={`cart-item-${item.variantId}`}
+                className="flex items-center gap-3 py-2"
               >
                 <div
-                  className="aspect-square rounded-md flex items-center justify-center"
+                  className="w-12 h-12 rounded-md flex-shrink-0"
                   style={{
-                    background: `linear-gradient(135deg, ${product.gradientFrom}, ${product.gradientTo})`,
+                    background: `linear-gradient(135deg, ${item.gradientFrom}, ${item.gradientTo})`,
                   }}
-                  title={product.name}
-                >
-                  <button
-                    data-testid={`button-remove-slot-${product.id}`}
-                    aria-label={`Remove ${product.name}`}
-                    className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-destructive-foreground rounded-full items-center justify-center text-xs flex opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-                    onClick={() => onRemoveProduct(product.id)}
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {item.variantName}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {item.productTypeName}
+                  </p>
                 </div>
-                <p className="text-[10px] text-muted-foreground text-center mt-1 truncate">
-                  {product.name}
-                </p>
-              </motion.div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-7 w-7"
+                    onClick={() => onRemoveVariant(item.variantId)}
+                    data-testid={`button-sheet-remove-${item.variantId}`}
+                  >
+                    {item.quantity === 1 ? (
+                      <Trash2 className="w-3 h-3" />
+                    ) : (
+                      <Minus className="w-3 h-3" />
+                    )}
+                  </Button>
+                  <span className="w-6 text-center text-sm font-semibold">
+                    {item.quantity}
+                  </span>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-7 w-7"
+                    onClick={() => onAddVariant(item.variantId)}
+                    data-testid={`button-sheet-add-${item.variantId}`}
+                  >
+                    <Plus className="w-3 h-3" />
+                  </Button>
+                </div>
+                <span className="text-sm font-semibold w-14 text-right flex-shrink-0">
+                  {formatPrice(item.price * item.quantity)}
+                </span>
+              </div>
             ))}
-          </AnimatePresence>
-
-          {Array.from({ length: emptySlots }).map((_, i) => (
-            <div key={`empty-${i}`} className="aspect-square rounded-md border-2 border-dashed border-muted flex items-center justify-center">
-              <span className="text-muted-foreground text-lg">+</span>
-            </div>
-          ))}
-        </div>
-
-        <Separator />
-
-        <div className="space-y-2 text-sm">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-muted-foreground">Subtotal</span>
-            <span data-testid="text-subtotal">${formatPrice(subtotal)}</span>
           </div>
-          {discount > 0 && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              className="flex items-center justify-between gap-2"
-            >
-              <span className="text-primary flex items-center gap-1">
-                <Tag className="w-3 h-3" />
-                Savings ({discountPercent}%)
-              </span>
-              <span className="text-primary font-medium" data-testid="text-savings">
-                -${formatPrice(discount)}
-              </span>
-            </motion.div>
-          )}
+
           <Separator />
-          <div className="flex items-center justify-between gap-2 font-bold text-base pt-1">
-            <span>Total</span>
-            <span data-testid="text-total">${formatPrice(total)}</span>
-          </div>
-        </div>
 
-        <Button
-          data-testid="button-add-to-cart"
-          className="w-full gap-2"
-          size="lg"
-          disabled={!isFull || isSubmitting}
-          onClick={onAddToCart}
-        >
-          {isSubmitting ? (
-            "Adding to Cart..."
-          ) : (
-            <>
-              <ShoppingCart className="w-4 h-4" />
-              {isFull
-                ? `Add Bundle - $${formatPrice(total)}`
-                : `Select ${emptySlots} more`}
-              {isFull && <ArrowRight className="w-4 h-4" />}
-            </>
-          )}
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-interface MobileBottomBarProps {
-  tier: BundleTier | null;
-  selectedProducts: Product[];
-  onViewBundle: () => void;
-  onAddToCart: () => void;
-  isSubmitting: boolean;
-  maxItems: number;
-}
-
-export function MobileBottomBar({
-  tier,
-  selectedProducts,
-  onViewBundle,
-  onAddToCart,
-  isSubmitting,
-  maxItems,
-}: MobileBottomBarProps) {
-  if (!tier) return null;
-
-  const selectedCount = selectedProducts.length;
-  const isFull = selectedCount >= maxItems;
-  const subtotal = selectedProducts.reduce((sum, p) => sum + p.price, 0);
-  const discount = Math.round(subtotal * ((tier.discountPercent || 0) / 100));
-  const total = subtotal - discount;
-
-  return (
-    <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 z-50 safe-area-bottom">
-      <div className="flex items-center gap-3">
-        <button
-          data-testid="button-view-bundle-mobile"
-          onClick={onViewBundle}
-          className="flex items-center gap-2 flex-1 min-w-0"
-        >
-          <div className="flex -space-x-2">
-            {selectedProducts.slice(0, 3).map((p) => (
-              <div
-                key={p.id}
-                className="w-8 h-8 rounded-full border-2 border-card"
-                style={{
-                  background: `linear-gradient(135deg, ${p.gradientFrom}, ${p.gradientTo})`,
-                }}
-              />
-            ))}
-            {selectedCount > 3 && (
-              <div className="w-8 h-8 rounded-full border-2 border-card bg-muted flex items-center justify-center text-xs font-medium">
-                +{selectedCount - 3}
+          <div className="pt-4 space-y-2">
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <span className="text-muted-foreground">Subtotal</span>
+              <span>{formatPrice(subtotal)}</span>
+            </div>
+            {discount > 0 && (
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="text-primary flex items-center gap-1">
+                  <Tag className="w-3 h-3" />
+                  Bundle Savings ({discountPercent}%)
+                </span>
+                <span className="text-primary font-medium">
+                  -{formatPrice(discount)}
+                </span>
               </div>
             )}
-          </div>
-          <div className="text-left min-w-0">
-            <p className="text-xs text-muted-foreground">
-              {selectedCount}/{maxItems} items
-            </p>
-            <p className="font-bold text-sm">${formatPrice(total)}</p>
-          </div>
-        </button>
+            <Separator />
+            <div className="flex items-center justify-between gap-2 font-bold text-lg pt-1">
+              <span>Total</span>
+              <span>{formatPrice(total)}</span>
+            </div>
 
-        <Button
-          data-testid="button-add-to-cart-mobile"
-          disabled={!isFull || isSubmitting}
-          onClick={onAddToCart}
-          className={cn(!isFull && "min-w-[120px]")}
-        >
-          {isSubmitting
-            ? "Adding..."
-            : isFull
-            ? "Add to Cart"
-            : `${maxItems - selectedCount} more`}
-        </Button>
-      </div>
-    </div>
+            {nextTier && (
+              <p className="text-xs text-center text-primary pt-1 flex items-center justify-center gap-1">
+                <ArrowUp className="w-3 h-3" />
+                Add {nextTier.minItems - itemCount} more item
+                {nextTier.minItems - itemCount !== 1 ? "s" : ""} to unlock{" "}
+                {nextTier.discountPercent}% off!
+              </p>
+            )}
+
+            <Button
+              data-testid="button-add-to-cart-sheet"
+              className="w-full gap-2"
+              size="lg"
+              disabled={isSubmitting || itemCount === 0}
+              onClick={() => {
+                onAddToCart();
+                setShowSheet(false);
+              }}
+            >
+              <ShoppingCart className="w-4 h-4" />
+              {isSubmitting
+                ? "Adding..."
+                : `Add to Cart - ${formatPrice(total)}`}
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

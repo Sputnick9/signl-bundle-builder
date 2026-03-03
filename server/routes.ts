@@ -9,19 +9,28 @@ export async function registerRoutes(
 ): Promise<Server> {
   app.get("/api/products", async (_req, res) => {
     try {
-      const products = await storage.getProducts();
+      const products = await storage.getProductTypes();
       res.json(products);
     } catch (err: any) {
       res.status(500).json({ error: "Failed to fetch products" });
     }
   });
 
-  app.get("/api/tiers", async (_req, res) => {
+  app.get("/api/categories", async (_req, res) => {
     try {
-      const tiers = await storage.getTiers();
+      const categories = await storage.getCategories();
+      res.json(categories);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch categories" });
+    }
+  });
+
+  app.get("/api/discount-tiers", async (_req, res) => {
+    try {
+      const tiers = await storage.getDiscountTiers();
       res.json(tiers);
     } catch (err: any) {
-      res.status(500).json({ error: "Failed to fetch tiers" });
+      res.status(500).json({ error: "Failed to fetch discount tiers" });
     }
   });
 
