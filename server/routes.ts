@@ -2,7 +2,8 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { createHmac } from "crypto";
 import { storage } from "./storage";
-import { addToCartSchema } from "@shared/schema";
+import { addToCartSchema, bundles } from "@shared/schema";
+import type { DiscountTierRule } from "@shared/schema";
 import { getShopify, shopifyConfigured, sessionStorage } from "./shopify";
 import { log } from "./index";
 import {
@@ -250,8 +251,10 @@ export async function registerRoutes(
       res.status(400).json({ error: "Invalid bundle ID" });
       return;
     }
+    const authedReq = req as AuthenticatedRequest;
+    const shop = authedReq.shopifyShop || (req.query.shop as string) || "dev-preview";
     try {
-      const bundle = await getBundle(id);
+      const bundle = await getBundle(id, shop);
       if (!bundle) {
         res.status(404).json({ error: "Bundle not found" });
         return;
@@ -302,18 +305,17 @@ export async function registerRoutes(
       res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
       return;
     }
-    const { products, ...rawBundle } = parsed.data;
+    const { products, shop: _clientShop, ...rawBundle } = parsed.data;
     const authedReq = req as AuthenticatedRequest;
-    const canonicalShop = authedReq.shopifyShop || rawBundle.shop || "dev-preview";
+    const canonicalShop = authedReq.shopifyShop || _clientShop || "dev-preview";
     try {
-      const updateData = rawBundle.name !== undefined ? toBundleInsert({
-        shop: canonicalShop,
-        name: rawBundle.name,
-        description: rawBundle.description,
-        discountType: rawBundle.discountType,
-        discountTiers: rawBundle.discountTiers,
-        status: rawBundle.status,
-      }) : rawBundle;
+      const updateData: Partial<Omit<typeof bundles.$inferInsert, "id" | "shop">> = {
+        ...(rawBundle.name !== undefined && { name: rawBundle.name }),
+        ...(rawBundle.description !== undefined && { description: rawBundle.description }),
+        ...(rawBundle.discountType !== undefined && { discountType: rawBundle.discountType }),
+        ...(rawBundle.discountTiers !== undefined && { discountTiers: rawBundle.discountTiers as DiscountTierRule[] }),
+        ...(rawBundle.status !== undefined && { status: rawBundle.status }),
+      };
 
       const productSeeds = products?.map((p) => ({
         shopifyProductId: p.shopifyProductId ?? "",
@@ -323,7 +325,7 @@ export async function registerRoutes(
         maxQty: p.maxQty ?? null,
       }));
 
-      const bundle = await updateBundle(id, updateData, productSeeds);
+      const bundle = await updateBundle(id, canonicalShop, updateData, productSeeds);
       if (!bundle) {
         res.status(404).json({ error: "Bundle not found" });
         return;
@@ -342,8 +344,10 @@ export async function registerRoutes(
       res.status(400).json({ error: "Invalid bundle ID" });
       return;
     }
+    const authedReq = req as AuthenticatedRequest;
+    const shop = authedReq.shopifyShop || (req.query.shop as string) || "dev-preview";
     try {
-      const deleted = await deleteBundle(id);
+      const deleted = await deleteBundle(id, shop);
       if (!deleted) {
         res.status(404).json({ error: "Bundle not found" });
         return;

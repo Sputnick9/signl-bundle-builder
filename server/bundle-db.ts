@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { bundles, bundleProducts } from "@shared/schema";
 import type { Bundle, BundleProduct, BundleWithProducts, DiscountTierRule } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 
 type BundleInsert = typeof bundles.$inferInsert;
 type BundleProductInsert = typeof bundleProducts.$inferInsert;
@@ -17,8 +17,11 @@ export async function listBundles(shop: string): Promise<Bundle[]> {
     .orderBy(desc(bundles.createdAt));
 }
 
-export async function getBundle(id: number): Promise<BundleWithProducts | null> {
-  const [bundle] = await db.select().from(bundles).where(eq(bundles.id, id));
+export async function getBundle(id: number, shop: string): Promise<BundleWithProducts | null> {
+  const [bundle] = await db
+    .select()
+    .from(bundles)
+    .where(and(eq(bundles.id, id), eq(bundles.shop, shop)));
   if (!bundle) return null;
   const products = await db
     .select()
@@ -44,17 +47,18 @@ export async function createBundle(
 
 export async function updateBundle(
   id: number,
-  data: Partial<Omit<BundleInsert, "id">>,
+  shop: string,
+  data: Partial<Omit<BundleInsert, "id" | "shop">>,
   products?: BundleProductSeed[]
 ): Promise<BundleWithProducts | null> {
-  const updateSet: Partial<Omit<BundleInsert, "id">> = {
+  const updateSet: Partial<Omit<BundleInsert, "id" | "shop">> = {
     ...data,
     updatedAt: new Date(),
   };
   const [bundle] = await db
     .update(bundles)
     .set(updateSet)
-    .where(eq(bundles.id, id))
+    .where(and(eq(bundles.id, id), eq(bundles.shop, shop)))
     .returning();
   if (!bundle) return null;
 
@@ -79,8 +83,11 @@ export async function updateBundle(
   return { ...bundle, products: updatedProducts };
 }
 
-export async function deleteBundle(id: number): Promise<boolean> {
-  const result = await db.delete(bundles).where(eq(bundles.id, id)).returning();
+export async function deleteBundle(id: number, shop: string): Promise<boolean> {
+  const result = await db
+    .delete(bundles)
+    .where(and(eq(bundles.id, id), eq(bundles.shop, shop)))
+    .returning();
   return result.length > 0;
 }
 
