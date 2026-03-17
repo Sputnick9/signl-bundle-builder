@@ -1,5 +1,5 @@
 import "@shopify/shopify-api/adapters/node";
-import { shopifyApi, ApiVersion, Session } from "@shopify/shopify-api";
+import { shopifyApi, ApiVersion, Session, DeliveryMethod } from "@shopify/shopify-api";
 import { db } from "./db";
 import { shopifySessions } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -20,7 +20,11 @@ function getHostName(): string {
   return SHOPIFY_APP_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
 }
 
-const sessionStorage = {
+function getAppUrl(): string {
+  return SHOPIFY_APP_URL || "http://localhost:5000";
+}
+
+export const sessionStorage = {
   async storeSession(session: Session): Promise<boolean> {
     try {
       const row = {
@@ -128,5 +132,29 @@ export function getShopify() {
     isEmbeddedApp: true,
     sessionStorage,
   });
+
+  _shopify.webhooks.addHandlers({
+    CUSTOMERS_DATA_REQUEST: [
+      {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: `${getAppUrl()}/api/webhooks/customers/data_request`,
+      },
+    ],
+    CUSTOMERS_REDACT: [
+      {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: `${getAppUrl()}/api/webhooks/customers/redact`,
+      },
+    ],
+    SHOP_REDACT: [
+      {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: `${getAppUrl()}/api/webhooks/shop/redact`,
+      },
+    ],
+  });
+
   return _shopify;
 }
+
+export { getAppUrl };

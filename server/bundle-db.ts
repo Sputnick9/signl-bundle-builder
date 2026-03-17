@@ -1,6 +1,13 @@
 import { db } from "./db";
-import { bundles, bundleProducts, type Bundle, type BundleProduct, type BundleWithProducts, type InsertBundle, type InsertBundleProduct } from "@shared/schema";
+import { bundles, bundleProducts } from "@shared/schema";
+import type { Bundle, BundleProduct, BundleWithProducts, DiscountTierRule } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
+
+type BundleInsert = typeof bundles.$inferInsert;
+type BundleProductInsert = typeof bundleProducts.$inferInsert;
+type BundleProductSeed = Omit<BundleProductInsert, "bundleId">;
+
+export type { BundleInsert, BundleProductSeed };
 
 export async function listBundles(shop: string): Promise<Bundle[]> {
   return db
@@ -21,8 +28,8 @@ export async function getBundle(id: number): Promise<BundleWithProducts | null> 
 }
 
 export async function createBundle(
-  data: InsertBundle,
-  products: Omit<InsertBundleProduct, "bundleId">[]
+  data: BundleInsert,
+  products: BundleProductSeed[]
 ): Promise<BundleWithProducts> {
   const [bundle] = await db.insert(bundles).values(data).returning();
   let inserted: BundleProduct[] = [];
@@ -37,12 +44,16 @@ export async function createBundle(
 
 export async function updateBundle(
   id: number,
-  data: Partial<InsertBundle>,
-  products?: Omit<InsertBundleProduct, "bundleId">[]
+  data: Partial<Omit<BundleInsert, "id">>,
+  products?: BundleProductSeed[]
 ): Promise<BundleWithProducts | null> {
+  const updateSet: Partial<Omit<BundleInsert, "id">> = {
+    ...data,
+    updatedAt: new Date(),
+  };
   const [bundle] = await db
     .update(bundles)
-    .set({ ...data, updatedAt: new Date() })
+    .set(updateSet)
     .where(eq(bundles.id, id))
     .returning();
   if (!bundle) return null;
@@ -71,4 +82,22 @@ export async function updateBundle(
 export async function deleteBundle(id: number): Promise<boolean> {
   const result = await db.delete(bundles).where(eq(bundles.id, id)).returning();
   return result.length > 0;
+}
+
+export function toBundleInsert(raw: {
+  shop: string;
+  name: string;
+  description?: string | null;
+  discountType?: string;
+  discountTiers?: DiscountTierRule[];
+  status?: string;
+}): BundleInsert {
+  return {
+    shop: raw.shop,
+    name: raw.name,
+    description: raw.description ?? null,
+    discountType: raw.discountType ?? "percentage",
+    discountTiers: (raw.discountTiers ?? []) as DiscountTierRule[],
+    status: raw.status ?? "draft",
+  };
 }

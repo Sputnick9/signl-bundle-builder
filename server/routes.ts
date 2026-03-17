@@ -1,12 +1,39 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { createHmac } from "crypto";
 import { storage } from "./storage";
-import { addToCartSchema, insertBundleSchema, insertBundleProductSchema } from "@shared/schema";
-import { getShopify, shopifyConfigured } from "./shopify";
+import { addToCartSchema } from "@shared/schema";
+import { getShopify, shopifyConfigured, sessionStorage } from "./shopify";
 import { log } from "./index";
-import { listBundles, getBundle, createBundle, updateBundle, deleteBundle } from "./bundle-db";
+import {
+  listBundles,
+  getBundle,
+  createBundle,
+  updateBundle,
+  deleteBundle,
+  toBundleInsert,
+} from "./bundle-db";
 import { z } from "zod";
+
+const bundleProductSchema = z.object({
+  shopifyProductId: z.string(),
+  productTitle: z.string().min(1),
+  productImage: z.string().nullable().optional(),
+  minQty: z.number().int().min(1).default(1),
+  maxQty: z.number().int().min(1).nullable().optional(),
+});
+
+const bundleBodySchema = z.object({
+  shop: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().nullable().optional(),
+  discountType: z.enum(["percentage", "fixed"]).default("percentage"),
+  discountTiers: z.array(
+    z.object({ minQty: z.number().int().min(1), discountValue: z.number().min(0) })
+  ).default([]),
+  status: z.enum(["draft", "active", "archived"]).default("draft"),
+  products: z.array(bundleProductSchema).default([]),
+});
 
 function verifyWebhookHmac(body: string, hmacHeader: string): boolean {
   const secret = process.env.SHOPIFY_API_SECRET || "";
@@ -15,17 +42,53 @@ function verifyWebhookHmac(body: string, hmacHeader: string): boolean {
   return digest === hmacHeader;
 }
 
-const bundleBodySchema = insertBundleSchema.extend({
-  products: z.array(
-    insertBundleProductSchema.omit({ bundleId: true })
-  ).optional().default([]),
-});
+function getHeaderString(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return value[0] ?? "";
+  return value ?? "";
+}
+
+function getRawBody(req: Request): string {
+  if (typeof (req as Request & { rawBody?: unknown }).rawBody === "string") {
+    return (req as Request & { rawBody: string }).rawBody;
+  }
+  if (Buffer.isBuffer((req as Request & { rawBody?: unknown }).rawBody)) {
+    return (req as Request & { rawBody: Buffer }).rawBody.toString();
+  }
+  return JSON.stringify(req.body);
+}
+
+function makeShopifyAuthMiddleware() {
+  const shopify = getShopify();
+  return async function shopifyAuthMiddleware(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    if (!shopify || !shopifyConfigured) {
+      next();
+      return;
+    }
+    const authorization = req.headers.authorization;
+    if (!authorization?.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Unauthorized: missing Shopify session token" });
+      return;
+    }
+    const token = authorization.slice(7);
+    try {
+      await shopify.session.decodeSessionToken(token);
+      next();
+    } catch {
+      res.status(401).json({ error: "Unauthorized: invalid Shopify session token" });
+    }
+  };
+}
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
   const shopify = getShopify();
+  const shopifyAuth = makeShopifyAuthMiddleware();
 
   if (shopify && shopifyConfigured) {
     app.get("/auth", async (req: Request, res: Response) => {
@@ -37,9 +100,10 @@ export async function registerRoutes(
           rawRequest: req,
           rawResponse: res,
         });
-      } catch (err: any) {
-        log(`OAuth begin error: ${err.message}`);
-        res.status(500).send("OAuth error: " + err.message);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        log(`OAuth begin error: ${msg}`);
+        res.status(500).send("OAuth error: " + msg);
       }
     });
 
@@ -51,30 +115,36 @@ export async function registerRoutes(
         });
         const { session } = callback;
         log(`OAuth callback success for shop: ${session.shop}`);
+
+        try {
+          const registrations = await shopify.webhooks.register({ session });
+          log(`Webhooks registered for ${session.shop}: ${JSON.stringify(registrations)}`);
+        } catch (webhookErr: unknown) {
+          const msg = webhookErr instanceof Error ? webhookErr.message : "Unknown error";
+          log(`Webhook registration warning: ${msg}`);
+        }
+
         const host = req.query.host as string;
         const redirectUrl = host
           ? `/?shop=${session.shop}&host=${host}`
           : `/?shop=${session.shop}`;
         res.redirect(redirectUrl);
-      } catch (err: any) {
-        log(`OAuth callback error: ${err.message}`);
-        res.status(500).send("OAuth callback error: " + err.message);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        log(`OAuth callback error: ${msg}`);
+        res.status(500).send("OAuth callback error: " + msg);
       }
     });
 
     app.post("/api/webhooks", async (req: Request, res: Response) => {
-      const topic = req.headers["x-shopify-topic"] as string;
-      const hmac = req.headers["x-shopify-hmac-sha256"] as string;
-      const rawBody =
-        typeof req.rawBody === "string"
-          ? req.rawBody
-          : Buffer.isBuffer(req.rawBody)
-            ? req.rawBody.toString()
-            : JSON.stringify(req.body);
+      const topic = getHeaderString(req.headers["x-shopify-topic"]);
+      const hmac = getHeaderString(req.headers["x-shopify-hmac-sha256"]);
+      const rawBody = getRawBody(req);
 
       if (!verifyWebhookHmac(rawBody, hmac)) {
         log(`Webhook HMAC verification failed for topic: ${topic}`);
-        return res.status(401).send("HMAC verification failed");
+        res.status(401).send("HMAC verification failed");
+        return;
       }
 
       log(`Webhook received: ${topic}`);
@@ -84,13 +154,11 @@ export async function registerRoutes(
     app.post(
       "/api/webhooks/customers/data_request",
       (req: Request, res: Response) => {
-        const hmac = req.headers["x-shopify-hmac-sha256"] as string;
-        const rawBody =
-          typeof req.rawBody === "string"
-            ? req.rawBody
-            : JSON.stringify(req.body);
+        const hmac = getHeaderString(req.headers["x-shopify-hmac-sha256"]);
+        const rawBody = getRawBody(req);
         if (!verifyWebhookHmac(rawBody, hmac)) {
-          return res.status(401).send("HMAC verification failed");
+          res.status(401).send("HMAC verification failed");
+          return;
         }
         log(`GDPR: customers/data_request for shop ${req.body?.shop_domain}`);
         res.status(200).send("OK");
@@ -100,13 +168,11 @@ export async function registerRoutes(
     app.post(
       "/api/webhooks/customers/redact",
       (req: Request, res: Response) => {
-        const hmac = req.headers["x-shopify-hmac-sha256"] as string;
-        const rawBody =
-          typeof req.rawBody === "string"
-            ? req.rawBody
-            : JSON.stringify(req.body);
+        const hmac = getHeaderString(req.headers["x-shopify-hmac-sha256"]);
+        const rawBody = getRawBody(req);
         if (!verifyWebhookHmac(rawBody, hmac)) {
-          return res.status(401).send("HMAC verification failed");
+          res.status(401).send("HMAC verification failed");
+          return;
         }
         log(`GDPR: customers/redact for shop ${req.body?.shop_domain}`);
         res.status(200).send("OK");
@@ -114,13 +180,11 @@ export async function registerRoutes(
     );
 
     app.post("/api/webhooks/shop/redact", (req: Request, res: Response) => {
-      const hmac = req.headers["x-shopify-hmac-sha256"] as string;
-      const rawBody =
-        typeof req.rawBody === "string"
-          ? req.rawBody
-          : JSON.stringify(req.body);
+      const hmac = getHeaderString(req.headers["x-shopify-hmac-sha256"]);
+      const rawBody = getRawBody(req);
       if (!verifyWebhookHmac(rawBody, hmac)) {
-        return res.status(401).send("HMAC verification failed");
+        res.status(401).send("HMAC verification failed");
+        return;
       }
       log(`GDPR: shop/redact for shop ${req.body?.shop_domain}`);
       res.status(200).send("OK");
@@ -129,11 +193,12 @@ export async function registerRoutes(
     app.get("/api/auth/status", async (req: Request, res: Response) => {
       const shop = req.query.shop as string;
       if (!shop) {
-        return res.json({ configured: true, authenticated: false });
+        res.json({ configured: true, authenticated: false });
+        return;
       }
       try {
-        const sessions = await shopify.session.findSessionsByShop?.(shop);
-        const hasSession = sessions && sessions.length > 0 && !!sessions[0]?.accessToken;
+        const sessions = await sessionStorage.findSessionsByShop(shop);
+        const hasSession = sessions.length > 0 && !!sessions[0]?.accessToken;
         res.json({ configured: true, authenticated: hasSession, shop });
       } catch {
         res.json({ configured: true, authenticated: false, shop });
@@ -150,72 +215,122 @@ export async function registerRoutes(
     });
   }
 
-  app.get("/api/bundles", async (req: Request, res: Response) => {
+  app.get("/api/bundles", shopifyAuth, async (req: Request, res: Response) => {
     const shop = (req.query.shop as string) || "dev-preview";
     try {
       const result = await listBundles(shop);
       res.json(result);
-    } catch (err: any) {
-      log(`List bundles error: ${err.message}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      log(`List bundles error: ${msg}`);
       res.status(500).json({ error: "Failed to fetch bundles" });
     }
   });
 
-  app.get("/api/bundles/:id", async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid bundle ID" });
+  app.get("/api/bundles/:id", shopifyAuth, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid bundle ID" });
+      return;
+    }
     try {
       const bundle = await getBundle(id);
-      if (!bundle) return res.status(404).json({ error: "Bundle not found" });
+      if (!bundle) {
+        res.status(404).json({ error: "Bundle not found" });
+        return;
+      }
       res.json(bundle);
-    } catch (err: any) {
-      log(`Get bundle error: ${err.message}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      log(`Get bundle error: ${msg}`);
       res.status(500).json({ error: "Failed to fetch bundle" });
     }
   });
 
-  app.post("/api/bundles", async (req: Request, res: Response) => {
+  app.post("/api/bundles", shopifyAuth, async (req: Request, res: Response) => {
     const parsed = bundleBodySchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
+      res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
+      return;
     }
-    const { products, ...bundleData } = parsed.data;
+    const { products, ...rawBundle } = parsed.data;
     try {
-      const bundle = await createBundle(bundleData, products);
+      const bundleInsert = toBundleInsert(rawBundle);
+      const productSeeds = products.map((p) => ({
+        shopifyProductId: p.shopifyProductId,
+        productTitle: p.productTitle,
+        productImage: p.productImage ?? null,
+        minQty: p.minQty,
+        maxQty: p.maxQty ?? null,
+      }));
+      const bundle = await createBundle(bundleInsert, productSeeds);
       res.status(201).json(bundle);
-    } catch (err: any) {
-      log(`Create bundle error: ${err.message}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      log(`Create bundle error: ${msg}`);
       res.status(500).json({ error: "Failed to create bundle" });
     }
   });
 
-  app.put("/api/bundles/:id", async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid bundle ID" });
+  app.put("/api/bundles/:id", shopifyAuth, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid bundle ID" });
+      return;
+    }
     const parsed = bundleBodySchema.partial().safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
+      res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
+      return;
     }
-    const { products, ...bundleData } = parsed.data;
+    const { products, ...rawBundle } = parsed.data;
     try {
-      const bundle = await updateBundle(id, bundleData, products);
-      if (!bundle) return res.status(404).json({ error: "Bundle not found" });
+      const updateData = rawBundle.name !== undefined ? toBundleInsert({
+        shop: rawBundle.shop ?? "dev-preview",
+        name: rawBundle.name,
+        description: rawBundle.description,
+        discountType: rawBundle.discountType,
+        discountTiers: rawBundle.discountTiers,
+        status: rawBundle.status,
+      }) : rawBundle;
+
+      const productSeeds = products?.map((p) => ({
+        shopifyProductId: p.shopifyProductId ?? "",
+        productTitle: p.productTitle ?? "",
+        productImage: p.productImage ?? null,
+        minQty: p.minQty ?? 1,
+        maxQty: p.maxQty ?? null,
+      }));
+
+      const bundle = await updateBundle(id, updateData, productSeeds);
+      if (!bundle) {
+        res.status(404).json({ error: "Bundle not found" });
+        return;
+      }
       res.json(bundle);
-    } catch (err: any) {
-      log(`Update bundle error: ${err.message}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      log(`Update bundle error: ${msg}`);
       res.status(500).json({ error: "Failed to update bundle" });
     }
   });
 
-  app.delete("/api/bundles/:id", async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid bundle ID" });
+  app.delete("/api/bundles/:id", shopifyAuth, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid bundle ID" });
+      return;
+    }
     try {
       const deleted = await deleteBundle(id);
-      if (!deleted) return res.status(404).json({ error: "Bundle not found" });
+      if (!deleted) {
+        res.status(404).json({ error: "Bundle not found" });
+        return;
+      }
       res.json({ success: true });
-    } catch (err: any) {
-      log(`Delete bundle error: ${err.message}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      log(`Delete bundle error: ${msg}`);
       res.status(500).json({ error: "Failed to delete bundle" });
     }
   });
@@ -250,13 +365,15 @@ export async function registerRoutes(
   app.post("/api/cart/bundle", async (req, res) => {
     const parsed = addToCartSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid request data" });
+      res.status(400).json({ error: "Invalid request data" });
+      return;
     }
     try {
       const bundle = await storage.createCartBundle(parsed.data);
       res.json({ success: true, bundle });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      res.status(400).json({ error: msg });
     }
   });
 

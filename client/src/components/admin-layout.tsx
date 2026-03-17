@@ -1,5 +1,6 @@
 import "@shopify/polaris/build/esm/styles.css";
 import { AppProvider, Frame, Navigation, TopBar } from "@shopify/polaris";
+import type { LinkLikeComponentProps } from "@shopify/polaris/build/ts/src/utilities/link/types";
 import enTranslations from "@shopify/polaris/locales/en.json";
 import { HomeIcon, ProductIcon, SettingsIcon } from "@shopify/polaris-icons";
 import { useLocation, Link } from "wouter";
@@ -72,9 +73,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   );
 }
 
-function WouterLink({ children, url, ...rest }: { children: React.ReactNode; url: string; [key: string]: any }) {
+function WouterLink({ children, url, external, download, ...rest }: LinkLikeComponentProps) {
+  if (external) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer" download={download} {...rest}>
+        {children}
+      </a>
+    );
+  }
   return (
-    <Link href={url} {...rest}>
+    <Link href={url} {...(rest as Record<string, unknown>)}>
       {children}
     </Link>
   );
