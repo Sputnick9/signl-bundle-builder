@@ -1,4 +1,19 @@
 import { z } from "zod";
+import { pgTable, text, boolean, timestamp } from "drizzle-orm/pg-core";
+
+export const shopifySessions = pgTable("shopify_sessions", {
+  id: text("id").primaryKey(),
+  shop: text("shop").notNull(),
+  state: text("state"),
+  isOnline: boolean("is_online").notNull().default(false),
+  scope: text("scope"),
+  expires: timestamp("expires"),
+  accessToken: text("access_token"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type ShopifySession = typeof shopifySessions.$inferSelect;
+export type InsertShopifySession = typeof shopifySessions.$inferInsert;
 
 export interface ScentVariant {
   id: number;

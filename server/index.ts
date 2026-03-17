@@ -22,6 +22,23 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.removeHeader("X-Frame-Options");
+  const shop = req.query.shop as string | undefined;
+  if (shop) {
+    res.setHeader(
+      "Content-Security-Policy",
+      `frame-ancestors https://${shop} https://admin.shopify.com`,
+    );
+  } else {
+    res.setHeader(
+      "Content-Security-Policy",
+      "frame-ancestors https://*.myshopify.com https://admin.shopify.com",
+    );
+  }
+  next();
+});
+
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -46,12 +63,11 @@ app.use((req, res, next) => {
 
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
+    if (path.startsWith("/api") || path === "/auth" || path === "/auth/callback") {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
-
       log(logLine);
     }
   });
@@ -75,9 +91,6 @@ app.use((req, res, next) => {
     return res.status(status).json({ message });
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
@@ -85,10 +98,6 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(
     {
