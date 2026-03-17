@@ -232,7 +232,8 @@ export async function registerRoutes(
   }
 
   app.get("/api/bundles", shopifyAuth, async (req: Request, res: Response) => {
-    const shop = (req.query.shop as string) || "dev-preview";
+    const authedReq = req as AuthenticatedRequest;
+    const shop = authedReq.shopifyShop || (req.query.shop as string) || "dev-preview";
     try {
       const result = await listBundles(shop);
       res.json(result);
@@ -270,8 +271,10 @@ export async function registerRoutes(
       return;
     }
     const { products, ...rawBundle } = parsed.data;
+    const authedReq = req as AuthenticatedRequest;
+    const canonicalShop = authedReq.shopifyShop || rawBundle.shop || "dev-preview";
     try {
-      const bundleInsert = toBundleInsert(rawBundle);
+      const bundleInsert = toBundleInsert({ ...rawBundle, shop: canonicalShop });
       const productSeeds = products.map((p) => ({
         shopifyProductId: p.shopifyProductId,
         productTitle: p.productTitle,
@@ -300,9 +303,11 @@ export async function registerRoutes(
       return;
     }
     const { products, ...rawBundle } = parsed.data;
+    const authedReq = req as AuthenticatedRequest;
+    const canonicalShop = authedReq.shopifyShop || rawBundle.shop || "dev-preview";
     try {
       const updateData = rawBundle.name !== undefined ? toBundleInsert({
-        shop: rawBundle.shop ?? "dev-preview",
+        shop: canonicalShop,
         name: rawBundle.name,
         description: rawBundle.description,
         discountType: rawBundle.discountType,

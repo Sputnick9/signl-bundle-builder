@@ -105,7 +105,7 @@ export default function AdminBundleForm() {
       queryClient.invalidateQueries({ queryKey: ["/api/bundles"] });
       navigate("/admin/bundles");
     },
-    onError: (err: any) => {
+    onError: (err: Error) => {
       setError(err.message || "Failed to save bundle");
     },
   });
@@ -130,7 +130,7 @@ export default function AdminBundleForm() {
     setProducts((prev) => prev.filter((_, idx) => idx !== i));
   }, []);
 
-  const updateProduct = useCallback((i: number, field: keyof ProductEntry, value: any) => {
+  const updateProduct = useCallback((i: number, field: keyof ProductEntry, value: ProductEntry[keyof ProductEntry]) => {
     setProducts((prev) => prev.map((p, idx) => idx === i ? { ...p, [field]: value } : p));
   }, []);
 
