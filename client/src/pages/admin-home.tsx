@@ -102,12 +102,17 @@ function RoadmapCard() {
 export default function AdminHome() {
   const [, navigate] = useLocation();
 
+  const shopParam = new URLSearchParams(window.location.search).get("shop") ?? "";
+  const authStatusUrl = shopParam
+    ? `/api/auth/status?shop=${encodeURIComponent(shopParam)}`
+    : "/api/auth/status";
+
   const { data: authStatus } = useQuery<{
     configured: boolean;
     authenticated: boolean;
     message?: string;
     shop?: string;
-  }>({ queryKey: ["/api/auth/status"] });
+  }>({ queryKey: [authStatusUrl] });
 
   const { data: bundles = [] } = useQuery<Bundle[]>({
     queryKey: ["/api/bundles"],

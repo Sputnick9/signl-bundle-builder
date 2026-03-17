@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
-import { createHmac } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { storage } from "./storage";
 import { addToCartSchema, bundles } from "@shared/schema";
 import type { DiscountTierRule } from "@shared/schema";
@@ -40,7 +40,11 @@ function verifyWebhookHmac(body: string, hmacHeader: string): boolean {
   const secret = process.env.SHOPIFY_API_SECRET || "";
   if (!secret) return false;
   const digest = createHmac("sha256", secret).update(body).digest("base64");
-  return digest === hmacHeader;
+  try {
+    return timingSafeEqual(Buffer.from(digest), Buffer.from(hmacHeader));
+  } catch {
+    return false;
+  }
 }
 
 function getHeaderString(value: string | string[] | undefined): string {
