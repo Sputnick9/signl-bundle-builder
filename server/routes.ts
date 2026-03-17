@@ -2,9 +2,11 @@ import type { Express, Request, Response } from "express";
 import type { Server } from "http";
 import { createHmac } from "crypto";
 import { storage } from "./storage";
-import { addToCartSchema } from "@shared/schema";
+import { addToCartSchema, insertBundleSchema, insertBundleProductSchema } from "@shared/schema";
 import { getShopify, shopifyConfigured } from "./shopify";
 import { log } from "./index";
+import { listBundles, getBundle, createBundle, updateBundle, deleteBundle } from "./bundle-db";
+import { z } from "zod";
 
 function verifyWebhookHmac(body: string, hmacHeader: string): boolean {
   const secret = process.env.SHOPIFY_API_SECRET || "";
@@ -12,6 +14,12 @@ function verifyWebhookHmac(body: string, hmacHeader: string): boolean {
   const digest = createHmac("sha256", secret).update(body).digest("base64");
   return digest === hmacHeader;
 }
+
+const bundleBodySchema = insertBundleSchema.extend({
+  products: z.array(
+    insertBundleProductSchema.omit({ bundleId: true })
+  ).optional().default([]),
+});
 
 export async function registerRoutes(
   httpServer: Server,
@@ -141,6 +149,76 @@ export async function registerRoutes(
       });
     });
   }
+
+  app.get("/api/bundles", async (req: Request, res: Response) => {
+    const shop = (req.query.shop as string) || "dev-preview";
+    try {
+      const result = await listBundles(shop);
+      res.json(result);
+    } catch (err: any) {
+      log(`List bundles error: ${err.message}`);
+      res.status(500).json({ error: "Failed to fetch bundles" });
+    }
+  });
+
+  app.get("/api/bundles/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid bundle ID" });
+    try {
+      const bundle = await getBundle(id);
+      if (!bundle) return res.status(404).json({ error: "Bundle not found" });
+      res.json(bundle);
+    } catch (err: any) {
+      log(`Get bundle error: ${err.message}`);
+      res.status(500).json({ error: "Failed to fetch bundle" });
+    }
+  });
+
+  app.post("/api/bundles", async (req: Request, res: Response) => {
+    const parsed = bundleBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
+    }
+    const { products, ...bundleData } = parsed.data;
+    try {
+      const bundle = await createBundle(bundleData, products);
+      res.status(201).json(bundle);
+    } catch (err: any) {
+      log(`Create bundle error: ${err.message}`);
+      res.status(500).json({ error: "Failed to create bundle" });
+    }
+  });
+
+  app.put("/api/bundles/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid bundle ID" });
+    const parsed = bundleBodySchema.partial().safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
+    }
+    const { products, ...bundleData } = parsed.data;
+    try {
+      const bundle = await updateBundle(id, bundleData, products);
+      if (!bundle) return res.status(404).json({ error: "Bundle not found" });
+      res.json(bundle);
+    } catch (err: any) {
+      log(`Update bundle error: ${err.message}`);
+      res.status(500).json({ error: "Failed to update bundle" });
+    }
+  });
+
+  app.delete("/api/bundles/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid bundle ID" });
+    try {
+      const deleted = await deleteBundle(id);
+      if (!deleted) return res.status(404).json({ error: "Bundle not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      log(`Delete bundle error: ${err.message}`);
+      res.status(500).json({ error: "Failed to delete bundle" });
+    }
+  });
 
   app.get("/api/products", async (_req, res) => {
     try {
