@@ -57,10 +57,14 @@ function getRawBody(req: Request): string {
   return JSON.stringify(req.body);
 }
 
+interface AuthenticatedRequest extends Request {
+  shopifyShop?: string;
+}
+
 function makeShopifyAuthMiddleware() {
   const shopify = getShopify();
   return async function shopifyAuthMiddleware(
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ): Promise<void> {
@@ -75,7 +79,19 @@ function makeShopifyAuthMiddleware() {
     }
     const token = authorization.slice(7);
     try {
-      await shopify.session.decodeSessionToken(token);
+      const payload = await shopify.session.decodeSessionToken(token);
+      const shopFromToken = payload.dest?.replace(/^https?:\/\//, "");
+
+      const requestedShop =
+        (req.query.shop as string | undefined) ??
+        (req.body as Record<string, unknown> | undefined)?.shop as string | undefined;
+
+      if (requestedShop && shopFromToken && requestedShop !== shopFromToken) {
+        res.status(401).json({ error: "Unauthorized: shop context mismatch" });
+        return;
+      }
+
+      req.shopifyShop = shopFromToken ?? requestedShop ?? "";
       next();
     } catch {
       res.status(401).json({ error: "Unauthorized: invalid Shopify session token" });

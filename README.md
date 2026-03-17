@@ -1,75 +1,135 @@
-# Shopify Bundle Builder — Dawn Theme Section
+# Shopify Bundle Builder App
 
-A native Shopify Dawn 15.2.0 theme section that lets customers build product bundles with progressive volume discounts. Built entirely with **Liquid**, **vanilla CSS**, and **vanilla JavaScript** — no React, no Node, no build tools.
+A full Shopify embedded app that lets merchants create product bundles with progressive volume discounts. Merchants install it via OAuth, configure bundles in the Polaris admin UI, and customers experience the bundle builder on the storefront.
 
-## Files
+---
 
-| File | Destination in Dawn Theme |
-|------|--------------------------|
-| `sections/bundle-builder.liquid` | `sections/` |
-| `assets/bundle-builder.css` | `assets/` |
-| `assets/bundle-builder.js` | `assets/` |
+## Quick Start (Development)
 
-## Installation
+```bash
+npm install
+npm run db:push   # Create database tables
+npm run dev       # Start Express + Vite on port 5000
+```
 
-1. Download the three files above
-2. In your Shopify admin, go to **Online Store → Themes → Edit code**
-3. Upload `bundle-builder.css` and `bundle-builder.js` to the **Assets** folder
-4. Create a new file `bundle-builder.liquid` in the **Sections** folder and paste the contents
-5. Go to **Online Store → Themes → Customize**
-6. Add the **Bundle Builder** section to any page template
+Visit `http://localhost:5000` — the Polaris admin UI loads with a setup banner until you connect a Shopify Partner app.
 
-## Features
+---
 
-- **Product grid** with expandable scent/variant panels (accordion row)
-- **Direct-add cards** for single-variant products (Add / +/- controls inline)
-- **Progressive discount tiers** (configurable via theme editor, e.g. 2+ = 10%, 3+ = 15%, up to 6+ = 30%)
-- **Sticky cart bar** with live item count, total, savings display, and tier progress bar
-- **Bottom drawer** to review bundle, adjust quantities, and add to cart
-- **Category tabs** with smooth-scroll navigation
-- **Responsive grid**: 4 columns desktop, 3 tablet, 2 mobile
-- **Shopify AJAX Cart API** integration (`/cart/add.js`)
-- **Theme editor schema** with full settings for hero text, review count, discount tiers, and category blocks with collection pickers
+## Shopify Partner Setup
 
-## Theme Editor Configuration
+### 1. Create the App in Partner Dashboard
 
-### Section Settings
-- **Hero**: heading lines, description, review count, max savings badge toggle
-- **Discount Tiers 1-5**: each tier has a minimum item count and discount percentage
+1. Go to [partners.shopify.com](https://partners.shopify.com) → **Apps** → **Create app**
+2. Choose **Custom app** or **Public app**
+3. Set the following fields:
 
-### Category Blocks
-Add one block per product category. Each block has:
-- **Category Title**: displayed as tab label and section header
-- **Collection**: Shopify collection picker — products from this collection appear in the category
-- **Icon SVG** (optional): paste an SVG string for the category tab icon
+| Field | Value |
+|-------|-------|
+| **App URL** | `https://yourapp.yourusername.replit.app` |
+| **Allowed redirection URL** | `https://yourapp.yourusername.replit.app/auth/callback` |
 
-## How It Works
+4. Copy your **Client ID** and **Client Secret**
 
-1. The **Liquid template** renders the hero, tab bar shell, category grid shell, and sticky cart bar shell
-2. Product/variant data from Shopify collections is serialized into a `<script type="application/json">` block
-3. The **vanilla JavaScript** reads that JSON, dynamically builds the product cards, handles expand/collapse, manages local cart state, and renders the sticky bar + drawer
-4. When the customer clicks **Add to Cart**, the JS posts to Shopify's `/cart/add.js` endpoint
-5. A `bundle-builder:cart-add` custom event is dispatched so other theme scripts (e.g. cart drawer) can react
+### 2. Set Environment Variables (Replit Secrets)
 
-## Product Setup in Shopify
+| Secret | Value |
+|--------|-------|
+| `SHOPIFY_API_KEY` | Client ID from Partner Dashboard |
+| `SHOPIFY_API_SECRET` | Client Secret from Partner Dashboard (keep private) |
+| `SHOPIFY_APP_URL` | Your app's full HTTPS URL, no trailing slash |
+| `VITE_SHOPIFY_API_KEY` | Same value as `SHOPIFY_API_KEY` (exposed to browser for App Bridge) |
+| `SCOPES` | Optional — defaults to `read_products,write_products,read_orders,write_discounts,read_draft_orders,write_draft_orders` |
 
-- Each **product** in your collection represents a product type (e.g. "Aluminum-Free Solid Stick")
-- Each **variant** on that product represents a scent/option (e.g. "Vanilla Bliss", "Lavender Sage")
-- Optional **metafields** (namespace: `custom`):
-  - `gradient_from` / `gradient_to` on products and variants — hex color for gradient backgrounds
-  - `is_new` on variants — boolean, shows a "New!" badge
+### 3. Install the App on a Development Store
 
-## Discount Implementation
+Navigate to:
 
-The section displays discount tiers visually. To apply actual discounts at checkout, pair with:
-- **Shopify Scripts** (Plus plans)
-- **Shopify Functions** (discount app)
-- **Automatic discounts** configured in Shopify admin
+```
+https://yourapp.yourusername.replit.app/auth?shop=yourdevstore.myshopify.com
+```
 
-## Browser Support
+This starts the OAuth flow. After approval, you'll be redirected back to the embedded admin.
 
-Tested on all modern browsers. Uses `fetch`, `closest()`, `CustomEvent`, CSS Grid, and `aspect-ratio` — all widely supported.
+---
 
-## License
+## API Endpoints
 
-MIT
+### Auth & OAuth
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/auth?shop=store.myshopify.com` | Start OAuth install flow |
+| `GET` | `/auth/callback` | OAuth callback (handled automatically) |
+| `GET` | `/api/auth/status?shop=store.myshopify.com` | Check if app is configured and authenticated |
+
+### Bundles (require Shopify session token in `Authorization: Bearer <token>` when Shopify is configured)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/bundles?shop=store.myshopify.com` | List all bundles for a shop |
+| `GET` | `/api/bundles/:id` | Get a bundle with its products |
+| `POST` | `/api/bundles` | Create a new bundle |
+| `PUT` | `/api/bundles/:id` | Update a bundle |
+| `DELETE` | `/api/bundles/:id` | Delete a bundle |
+
+### GDPR Webhooks (HMAC verified)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/webhooks/customers/data_request` | Customer data request |
+| `POST` | `/api/webhooks/customers/redact` | Customer data redact |
+| `POST` | `/api/webhooks/shop/redact` | Shop data redact |
+
+---
+
+## Architecture
+
+```
+client/
+  src/
+    components/
+      admin-layout.tsx          Polaris Frame + sidebar navigation
+    pages/
+      admin-home.tsx            Dashboard with stats and roadmap
+      admin-bundles.tsx         Bundle list (IndexTable)
+      admin-bundle-form.tsx     Create/edit bundle form
+      bundle-builder.tsx        Storefront preview UI
+    lib/
+      queryClient.ts            TanStack Query + App Bridge session token fetch
+
+server/
+  shopify.ts                    Shopify API SDK config + session storage + webhook registration
+  routes.ts                     Express routes: OAuth, bundle CRUD, GDPR webhooks
+  bundle-db.ts                  Drizzle ORM bundle CRUD operations
+  db.ts                         PostgreSQL connection
+
+shared/
+  schema.ts                     Drizzle ORM tables + Zod schemas (shopify_sessions, bundles, bundle_products)
+```
+
+---
+
+## Database Tables
+
+| Table | Description |
+|-------|-------------|
+| `shopify_sessions` | OAuth session storage (shop, access token, scope, expiry) |
+| `bundles` | Bundle campaigns (name, discount type, tiers, status, shop) |
+| `bundle_products` | Products linked to bundles (product ID, title, image, qty limits) |
+
+---
+
+## Build Roadmap
+
+- [x] **Task 1** — App Foundation & OAuth (Shopify SDK, session storage, GDPR webhooks)
+- [x] **Task 2** — Bundle Admin UI (Polaris layout, CRUD, form with discount tiers)
+- [ ] **Task 3** — Theme App Extension (storefront liquid section)
+- [ ] **Task 4** — Shopify Functions (real checkout discounts)
+- [ ] **Task 5** — Billing & Subscriptions (Shopify Billing API)
+
+---
+
+## Shopify Dawn Theme Section (Legacy)
+
+The `sections/bundle-builder.liquid`, `assets/bundle-builder.css`, and `assets/bundle-builder.js` files are a standalone Dawn 15.2.0 theme section that can be used without the full app. See the [GitHub repo](https://github.com/Sputnick9/shopify-bundle-builder) for installation instructions.
