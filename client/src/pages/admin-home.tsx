@@ -129,8 +129,8 @@ export default function AdminHome() {
           {!isConfigured && <SetupBanner />}
 
           {isConfigured && authStatus?.shop && (
-            <Banner title={`Connected to ${authStatus.shop}`} tone="success">
-              <Text as="p">Your app is successfully connected to this Shopify store.</Text>
+            <Banner title={`Connected to ${authStatus.shop}`} tone="success" data-testid="banner-app-installed">
+              <Text as="p" data-testid="text-app-installed">App is installed and connected to this Shopify store.</Text>
             </Banner>
           )}
 
