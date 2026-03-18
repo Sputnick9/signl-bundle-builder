@@ -33,7 +33,7 @@ const bundleSlotSchema = z.object({
 });
 
 const bundleBodySchema = z.object({
-  shop: z.string().min(1),
+  shop: z.string().optional(),
   name: z.string().min(1),
   description: z.string().nullable().optional(),
   discountType: z.enum(["percentage", "fixed"]).default("percentage"),

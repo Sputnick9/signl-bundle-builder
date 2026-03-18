@@ -113,7 +113,6 @@ export default function AdminBundleForm() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const body = {
-        shop: "dev-preview",
         name,
         description: description || null,
         discountType,
