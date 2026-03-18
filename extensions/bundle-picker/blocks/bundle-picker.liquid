@@ -1,0 +1,55 @@
+{% comment %}
+  SiGNL Bundle Picker — Theme App Extension block
+  Renders the slot-based bundle picker for the current product page.
+  Fetches live bundle configuration from the app API.
+{% endcomment %}
+
+{{ 'bundle-picker.css' | asset_url | stylesheet_tag }}
+
+<div
+  class="signl-bundle-picker"
+  data-shop="{{ shop.permanent_domain }}"
+  data-product-id="{{ product.id | prepend: 'gid://shopify/Product/' }}"
+  data-app-url="{{ block.settings.app_url }}"
+  data-currency="{{ cart.currency.iso_code }}"
+>
+  <div class="signl-bp__loading" aria-live="polite">
+    <div class="signl-bp__spinner"></div>
+    <p>Loading bundles&hellip;</p>
+  </div>
+</div>
+
+<script src="{{ 'bundle-picker.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "Bundle Picker",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "app_url",
+      "label": "App URL",
+      "info": "Your SiGNL Bundle Builder app URL, e.g. https://your-app.replit.app",
+      "placeholder": "https://your-app.replit.app"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Section heading",
+      "default": "Build Your Bundle"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_heading",
+      "label": "Show section heading",
+      "default": true
+    }
+  ],
+  "presets": [
+    {
+      "name": "Bundle Picker"
+    }
+  ]
+}
+{% endschema %}

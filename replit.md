@@ -22,7 +22,14 @@ A full Shopify embedded app that allows merchants to create and manage product b
    - 3-step Polaris wizard: Details → Slots → Discount Tiers
    - Shopify ResourcePicker integration + manual product entry fallback
    - App Bridge nav menu (`<ui-nav-menu>`) for embedded sidebar navigation
-3. **Task 3 — Theme App Extension** ⏳ Pending
+3. **Task 3 — Theme App Extension** ✅ COMPLETE
+   - `extensions/bundle-picker/` directory with `shopify.extension.toml`
+   - `blocks/bundle-picker.liquid` — Shopify OS 2.0 App Block (target: section)
+   - `assets/bundle-picker.js` — slot-based picker (fetches API, variant picker modal, AJAX cart)
+   - `assets/bundle-picker.css` — scoped BEM-style CSS matching `#2A9D8F` brand
+   - `GET /api/storefront/bundles` — public CORS endpoint: active bundles for a product
+   - `GET /api/storefront/product-variants` — CORS proxy via Shopify Admin API for variant resolution
+   - `getBundlesForProduct()` in `server/bundle-db.ts` — DB query using JOIN across slots
 4. **Task 4 — Shopify Functions (Real Discounts)** ⏳ Pending
 5. **Task 5 — Billing & Subscriptions** ⏳ Pending
 
@@ -84,6 +91,10 @@ Set these in Replit Secrets before enabling Shopify OAuth:
 - `PUT /api/bundles/:id` — Update bundle + replace all slots atomically (DB transaction)
 - `DELETE /api/bundles/:id` — Delete bundle (cascades slots + slot products)
 
+### Storefront (public, CORS-enabled, no auth)
+- `GET /api/storefront/bundles?shop=xxx&productId=gid://shopify/Product/yyy` — Active bundles for a product (used by Theme Extension JS)
+- `GET /api/storefront/product-variants?shop=xxx&productId=gid://shopify/Product/yyy` — Product variants via Shopify Admin API proxy (for variant selection UI)
+
 ### OAuth & Webhooks
 - `GET /auth?shop=store.myshopify.com` — Start Shopify OAuth
 - `GET /auth/callback` — Shopify OAuth callback
@@ -108,8 +119,11 @@ client/src/pages/
 client/src/components/
   admin-layout.tsx                  - Polaris AppProvider + Frame shell
 client/index.html                   - App Bridge ui-nav-menu (Dashboard + Bundles links)
-assets/                             - Theme App Extension assets (Task 3)
-sections/                           - Liquid section for storefront (Task 3)
+extensions/bundle-picker/
+  shopify.extension.toml            - Shopify CLI 3.x extension manifest
+  blocks/bundle-picker.liquid       - OS 2.0 App Block (schema + data attributes)
+  assets/bundle-picker.js           - Slot-based bundle picker (vanilla JS IIFE)
+  assets/bundle-picker.css          - Scoped BEM styles for storefront picker
 ```
 
 ## Shopify Partner Setup (One-Time)

@@ -145,6 +145,30 @@ export async function deleteBundle(id: number, shop: string): Promise<boolean> {
   return result.length > 0;
 }
 
+export async function getBundlesForProduct(
+  shop: string,
+  shopifyProductId: string
+): Promise<BundleWithSlots[]> {
+  const matchingRows = await db
+    .selectDistinct({ bundleId: bundleSlots.bundleId })
+    .from(bundleSlotProducts)
+    .innerJoin(bundleSlots, eq(bundleSlotProducts.slotId, bundleSlots.id))
+    .innerJoin(bundles, eq(bundleSlots.bundleId, bundles.id))
+    .where(
+      and(
+        eq(bundles.shop, shop),
+        eq(bundles.status, "active"),
+        eq(bundleSlotProducts.shopifyProductId, shopifyProductId)
+      )
+    );
+
+  if (!matchingRows.length) return [];
+
+  const bundleIds = [...new Set(matchingRows.map((r) => r.bundleId))];
+  const results = await Promise.all(bundleIds.map((id) => getBundle(id, shop)));
+  return results.filter((b): b is BundleWithSlots => b !== null);
+}
+
 export function toBundleInsert(raw: {
   shop: string;
   name: string;

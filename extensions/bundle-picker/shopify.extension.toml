@@ -1,0 +1,6 @@
+api_version = "2024-04"
+
+[[extensions]]
+type = "theme"
+name = "SiGNL Bundle Picker"
+handle = "bundle-picker"
