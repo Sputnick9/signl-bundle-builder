@@ -113,9 +113,17 @@ export async function registerRoutes(
 
   if (shopify && shopifyConfigured) {
     app.get("/auth", async (req: Request, res: Response) => {
+      const rawShop = req.query.shop as string | undefined;
+      const sanitizedShop = rawShop
+        ? shopify.utils.sanitizeShop(rawShop, true)
+        : null;
+      if (!sanitizedShop) {
+        res.status(400).send("Missing or invalid shop parameter. Expected: mystore.myshopify.com");
+        return;
+      }
       try {
         await shopify.auth.begin({
-          shop: shopify.utils.sanitizeShop(req.query.shop as string, true)!,
+          shop: sanitizedShop,
           callbackPath: "/auth/callback",
           isOnline: false,
           rawRequest: req,
