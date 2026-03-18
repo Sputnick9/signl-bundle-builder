@@ -227,7 +227,7 @@ export async function registerRoutes(
       }
       try {
         const sessions = await sessionStorage.findSessionsByShop(shop);
-        const hasSession = sessions.length > 0 && !!sessions[0]?.accessToken;
+        const hasSession = sessions.some((s) => !!s.accessToken);
         res.json({ configured: true, authenticated: hasSession, shop });
       } catch {
         res.json({ configured: true, authenticated: false, shop });
