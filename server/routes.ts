@@ -197,7 +197,11 @@ function makeRequireActiveSubscription() {
       });
     } catch (err) {
       log(`requireActiveSubscription error for ${shop}: ${err instanceof Error ? err.message : String(err)}`);
-      next();
+      res.status(402).json({
+        error: "Subscription check failed",
+        billingRequired: true,
+        message: "Unable to verify subscription status. Please try again.",
+      });
     }
   };
 }
@@ -617,7 +621,7 @@ export async function registerRoutes(
   // All three endpoints require shopifyAuth so shop is always derived from
   // the authenticated Shopify session token, never trusted from request body/query.
 
-  app.get("/api/shop/discount", shopifyAuth, async (req: Request, res: Response) => {
+  app.get("/api/shop/discount", shopifyAuth, requireBilling, async (req: Request, res: Response) => {
     if (!shopifyConfigured) {
       res.json({ configured: false, functionIdSet: false, active: false });
       return;
@@ -675,7 +679,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/shop/discount", shopifyAuth, async (req: Request, res: Response) => {
+  app.post("/api/shop/discount", shopifyAuth, requireBilling, async (req: Request, res: Response) => {
     if (!shopifyConfigured) {
       res.status(503).json({ error: "Shopify not configured" });
       return;
@@ -709,7 +713,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/shop/discount", shopifyAuth, async (req: Request, res: Response) => {
+  app.delete("/api/shop/discount", shopifyAuth, requireBilling, async (req: Request, res: Response) => {
     if (!shopifyConfigured) {
       res.status(503).json({ error: "Shopify not configured" });
       return;

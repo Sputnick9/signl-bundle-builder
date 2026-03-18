@@ -37,6 +37,20 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+function handle402(res: Response) {
+  if (res.status === 402) {
+    const params = new URLSearchParams(window.location.search);
+    const shop = params.get("shop") ?? "";
+    const host = params.get("host") ?? "";
+    const billingUrl = `/billing${shop ? `?shop=${encodeURIComponent(shop)}` : ""}${host ? `${shop ? "&" : "?"}host=${encodeURIComponent(host)}` : ""}`;
+    if (typeof window !== "undefined") {
+      window.location.href = billingUrl;
+    }
+    return true;
+  }
+  return false;
+}
+
 export async function apiRequest(
   method: string,
   url: string,
@@ -49,6 +63,10 @@ export async function apiRequest(
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
+
+  if (handle402(res)) {
+    return res;
+  }
 
   await throwIfResNotOk(res);
   return res;
@@ -68,6 +86,10 @@ export const getQueryFn: <T>(options: {
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
+      return null;
+    }
+
+    if (handle402(res)) {
       return null;
     }
 
