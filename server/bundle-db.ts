@@ -1,13 +1,25 @@
 import { db } from "./db";
-import { bundles, bundleProducts } from "@shared/schema";
-import type { Bundle, BundleProduct, BundleWithProducts, DiscountTierRule } from "@shared/schema";
-import { and, eq, desc } from "drizzle-orm";
+import { bundles, bundleSlots, bundleSlotProducts } from "@shared/schema";
+import type {
+  Bundle,
+  BundleSlot,
+  BundleSlotProduct,
+  BundleSlotWithProducts,
+  BundleWithSlots,
+  DiscountTierRule,
+} from "@shared/schema";
+import { and, eq, asc, desc } from "drizzle-orm";
 
 type BundleInsert = typeof bundles.$inferInsert;
-type BundleProductInsert = typeof bundleProducts.$inferInsert;
-type BundleProductSeed = Omit<BundleProductInsert, "bundleId">;
+type SlotInsert = typeof bundleSlots.$inferInsert;
+type SlotProductInsert = typeof bundleSlotProducts.$inferInsert;
 
-export type { BundleInsert, BundleProductSeed };
+export type SlotProductSeed = Omit<SlotProductInsert, "slotId" | "id">;
+export type SlotSeed = Omit<SlotInsert, "bundleId" | "id"> & {
+  products: SlotProductSeed[];
+};
+
+export type { BundleInsert, SlotInsert, SlotProductInsert };
 
 export async function listBundles(shop: string): Promise<Bundle[]> {
   return db
@@ -17,44 +29,70 @@ export async function listBundles(shop: string): Promise<Bundle[]> {
     .orderBy(desc(bundles.createdAt));
 }
 
-export async function getBundle(id: number, shop: string): Promise<BundleWithProducts | null> {
+export async function getBundle(id: number, shop: string): Promise<BundleWithSlots | null> {
   const [bundle] = await db
     .select()
     .from(bundles)
     .where(and(eq(bundles.id, id), eq(bundles.shop, shop)));
   if (!bundle) return null;
-  const products = await db
+
+  const slots = await db
     .select()
-    .from(bundleProducts)
-    .where(eq(bundleProducts.bundleId, id));
-  return { ...bundle, products };
+    .from(bundleSlots)
+    .where(eq(bundleSlots.bundleId, id))
+    .orderBy(asc(bundleSlots.position));
+
+  const slotsWithProducts: BundleSlotWithProducts[] = await Promise.all(
+    slots.map(async (slot) => {
+      const products = await db
+        .select()
+        .from(bundleSlotProducts)
+        .where(eq(bundleSlotProducts.slotId, slot.id));
+      return { ...slot, products };
+    })
+  );
+
+  return { ...bundle, slots: slotsWithProducts };
 }
 
 export async function createBundle(
   data: BundleInsert,
-  products: BundleProductSeed[]
-): Promise<BundleWithProducts> {
+  slots: SlotSeed[]
+): Promise<BundleWithSlots> {
   const [bundle] = await db.insert(bundles).values(data).returning();
-  let inserted: BundleProduct[] = [];
-  if (products.length > 0) {
-    inserted = await db
-      .insert(bundleProducts)
-      .values(products.map((p) => ({ ...p, bundleId: bundle.id })))
+
+  const slotsWithProducts: BundleSlotWithProducts[] = [];
+  for (let position = 0; position < slots.length; position++) {
+    const { products: productSeeds, ...slotData } = slots[position];
+    const [slot] = await db
+      .insert(bundleSlots)
+      .values({ ...slotData, bundleId: bundle.id, position })
       .returning();
+
+    let products: BundleSlotProduct[] = [];
+    if (productSeeds.length > 0) {
+      products = await db
+        .insert(bundleSlotProducts)
+        .values(productSeeds.map((p) => ({ ...p, slotId: slot.id })))
+        .returning();
+    }
+    slotsWithProducts.push({ ...slot, products });
   }
-  return { ...bundle, products: inserted };
+
+  return { ...bundle, slots: slotsWithProducts };
 }
 
 export async function updateBundle(
   id: number,
   shop: string,
   data: Partial<Omit<BundleInsert, "id" | "shop">>,
-  products?: BundleProductSeed[]
-): Promise<BundleWithProducts | null> {
+  slots?: SlotSeed[]
+): Promise<BundleWithSlots | null> {
   const updateSet: Partial<Omit<BundleInsert, "id" | "shop">> = {
     ...data,
     updatedAt: new Date(),
   };
+
   const [bundle] = await db
     .update(bundles)
     .set(updateSet)
@@ -62,25 +100,47 @@ export async function updateBundle(
     .returning();
   if (!bundle) return null;
 
-  let updatedProducts: BundleProduct[];
-  if (products !== undefined) {
-    await db.delete(bundleProducts).where(eq(bundleProducts.bundleId, id));
-    if (products.length > 0) {
-      updatedProducts = await db
-        .insert(bundleProducts)
-        .values(products.map((p) => ({ ...p, bundleId: id })))
+  let slotsWithProducts: BundleSlotWithProducts[];
+
+  if (slots !== undefined) {
+    await db.delete(bundleSlots).where(eq(bundleSlots.bundleId, id));
+
+    slotsWithProducts = [];
+    for (let position = 0; position < slots.length; position++) {
+      const { products: productSeeds, ...slotData } = slots[position];
+      const [slot] = await db
+        .insert(bundleSlots)
+        .values({ ...slotData, bundleId: id, position })
         .returning();
-    } else {
-      updatedProducts = [];
+
+      let products: BundleSlotProduct[] = [];
+      if (productSeeds.length > 0) {
+        products = await db
+          .insert(bundleSlotProducts)
+          .values(productSeeds.map((p) => ({ ...p, slotId: slot.id })))
+          .returning();
+      }
+      slotsWithProducts.push({ ...slot, products });
     }
   } else {
-    updatedProducts = await db
+    const rawSlots = await db
       .select()
-      .from(bundleProducts)
-      .where(eq(bundleProducts.bundleId, id));
+      .from(bundleSlots)
+      .where(eq(bundleSlots.bundleId, id))
+      .orderBy(asc(bundleSlots.position));
+
+    slotsWithProducts = await Promise.all(
+      rawSlots.map(async (slot) => {
+        const products = await db
+          .select()
+          .from(bundleSlotProducts)
+          .where(eq(bundleSlotProducts.slotId, slot.id));
+        return { ...slot, products };
+      })
+    );
   }
 
-  return { ...bundle, products: updatedProducts };
+  return { ...bundle, slots: slotsWithProducts };
 }
 
 export async function deleteBundle(id: number, shop: string): Promise<boolean> {

@@ -15,20 +15,28 @@ import {
   Badge,
   Box,
   InlineGrid,
+  ProgressBar,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation, useRoute } from "wouter";
 import { useState, useEffect, useCallback } from "react";
-import type { BundleWithProducts, DiscountTierRule } from "@shared/schema";
+import type { BundleWithSlots, DiscountTierRule } from "@shared/schema";
 
-interface ProductEntry {
+interface SlotProduct {
   shopifyProductId: string;
+  shopifyVariantId: string;
   productTitle: string;
+  variantTitle: string;
   productImage: string;
+}
+
+interface SlotEntry {
+  name: string;
   minQty: number;
   maxQty: number | null;
+  products: SlotProduct[];
 }
 
 const defaultTiers: DiscountTierRule[] = [
@@ -37,6 +45,24 @@ const defaultTiers: DiscountTierRule[] = [
   { minQty: 4, discountValue: 20 },
 ];
 
+const STEPS = ["Bundle Details", "Product Slots", "Discount Tiers"] as const;
+type StepIndex = 0 | 1 | 2;
+
+const emptySlot = (): SlotEntry => ({
+  name: "",
+  minQty: 1,
+  maxQty: null,
+  products: [],
+});
+
+const emptyProduct = (): SlotProduct => ({
+  shopifyProductId: "",
+  shopifyVariantId: "",
+  productTitle: "",
+  variantTitle: "",
+  productImage: "",
+});
+
 export default function AdminBundleForm() {
   const [, navigate] = useLocation();
   const [matchNew] = useRoute("/admin/bundles/new");
@@ -44,16 +70,17 @@ export default function AdminBundleForm() {
   const isNew = matchNew;
   const bundleId = matchEdit ? parseInt(params!.id) : null;
 
+  const [step, setStep] = useState<StepIndex>(0);
+
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
   const [status, setStatus] = useState<"draft" | "active" | "archived">("draft");
   const [tiers, setTiers] = useState<DiscountTierRule[]>(defaultTiers);
-  const [products, setProducts] = useState<ProductEntry[]>([]);
-  const [shop] = useState("dev-preview");
+  const [slots, setSlots] = useState<SlotEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: existingBundle, isLoading: loadingBundle } = useQuery<BundleWithProducts>({
+  const { data: existingBundle, isLoading: loadingBundle } = useQuery<BundleWithSlots>({
     queryKey: ["/api/bundles", bundleId],
     enabled: !!bundleId,
   });
@@ -66,13 +93,18 @@ export default function AdminBundleForm() {
       setStatus(existingBundle.status as "draft" | "active" | "archived");
       const savedTiers = existingBundle.discountTiers as DiscountTierRule[];
       setTiers(savedTiers?.length ? savedTiers : defaultTiers);
-      setProducts(
-        existingBundle.products.map((p) => ({
-          shopifyProductId: p.shopifyProductId,
-          productTitle: p.productTitle,
-          productImage: p.productImage || "",
-          minQty: p.minQty,
-          maxQty: p.maxQty,
+      setSlots(
+        (existingBundle.slots ?? []).map((slot) => ({
+          name: slot.name,
+          minQty: slot.minQty,
+          maxQty: slot.maxQty ?? null,
+          products: slot.products.map((p) => ({
+            shopifyProductId: p.shopifyProductId,
+            shopifyVariantId: p.shopifyVariantId || "",
+            productTitle: p.productTitle,
+            variantTitle: p.variantTitle || "",
+            productImage: p.productImage || "",
+          })),
         }))
       );
     }
@@ -81,18 +113,25 @@ export default function AdminBundleForm() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const body = {
-        shop,
+        shop: "dev-preview",
         name,
         description: description || null,
         discountType,
         discountTiers: tiers,
         status,
-        products: products.map((p) => ({
-          shopifyProductId: p.shopifyProductId || `demo-${Math.random().toString(36).slice(2)}`,
-          productTitle: p.productTitle,
-          productImage: p.productImage || null,
-          minQty: p.minQty || 1,
-          maxQty: p.maxQty || null,
+        slots: slots.map((slot) => ({
+          name: slot.name || "Unnamed slot",
+          minQty: slot.minQty || 1,
+          maxQty: slot.maxQty || null,
+          products: slot.products
+            .filter((p) => p.productTitle.trim())
+            .map((p) => ({
+              shopifyProductId: p.shopifyProductId || `draft-${Math.random().toString(36).slice(2)}`,
+              shopifyVariantId: p.shopifyVariantId || null,
+              productTitle: p.productTitle,
+              variantTitle: p.variantTitle || null,
+              productImage: p.productImage || null,
+            })),
         })),
       };
       if (isNew) {
@@ -111,7 +150,10 @@ export default function AdminBundleForm() {
   });
 
   const addTier = useCallback(() => {
-    setTiers((prev) => [...prev, { minQty: (prev[prev.length - 1]?.minQty || 1) + 1, discountValue: 5 }]);
+    setTiers((prev) => [
+      ...prev,
+      { minQty: (prev[prev.length - 1]?.minQty || 1) + 1, discountValue: 5 },
+    ]);
   }, []);
 
   const removeTier = useCallback((i: number) => {
@@ -119,20 +161,98 @@ export default function AdminBundleForm() {
   }, []);
 
   const updateTier = useCallback((i: number, field: keyof DiscountTierRule, value: number) => {
-    setTiers((prev) => prev.map((t, idx) => idx === i ? { ...t, [field]: value } : t));
+    setTiers((prev) => prev.map((t, idx) => (idx === i ? { ...t, [field]: value } : t)));
   }, []);
 
-  const addProduct = useCallback(() => {
-    setProducts((prev) => [...prev, { shopifyProductId: "", productTitle: "", productImage: "", minQty: 1, maxQty: null }]);
+  const addSlot = useCallback(() => {
+    setSlots((prev) => [...prev, emptySlot()]);
   }, []);
 
-  const removeProduct = useCallback((i: number) => {
-    setProducts((prev) => prev.filter((_, idx) => idx !== i));
+  const removeSlot = useCallback((i: number) => {
+    setSlots((prev) => prev.filter((_, idx) => idx !== i));
   }, []);
 
-  const updateProduct = useCallback((i: number, field: keyof ProductEntry, value: ProductEntry[keyof ProductEntry]) => {
-    setProducts((prev) => prev.map((p, idx) => idx === i ? { ...p, [field]: value } : p));
+  const updateSlot = useCallback(
+    (i: number, field: keyof Omit<SlotEntry, "products">, value: SlotEntry[typeof field]) => {
+      setSlots((prev) => prev.map((s, idx) => (idx === i ? { ...s, [field]: value } : s)));
+    },
+    []
+  );
+
+  const addProductToSlot = useCallback((slotIdx: number) => {
+    setSlots((prev) =>
+      prev.map((s, idx) =>
+        idx === slotIdx ? { ...s, products: [...s.products, emptyProduct()] } : s
+      )
+    );
   }, []);
+
+  const removeProductFromSlot = useCallback((slotIdx: number, productIdx: number) => {
+    setSlots((prev) =>
+      prev.map((s, idx) =>
+        idx === slotIdx
+          ? { ...s, products: s.products.filter((_, pi) => pi !== productIdx) }
+          : s
+      )
+    );
+  }, []);
+
+  const updateProductInSlot = useCallback(
+    (slotIdx: number, productIdx: number, field: keyof SlotProduct, value: string) => {
+      setSlots((prev) =>
+        prev.map((s, idx) =>
+          idx === slotIdx
+            ? {
+                ...s,
+                products: s.products.map((p, pi) =>
+                  pi === productIdx ? { ...p, [field]: value } : p
+                ),
+              }
+            : s
+        )
+      );
+    },
+    []
+  );
+
+  const pickProductsFromShopify = useCallback(
+    async (slotIdx: number) => {
+      const w = window as unknown as {
+        shopify?: { resourcePicker?: (opts: unknown) => Promise<unknown> };
+      };
+      if (typeof w.shopify?.resourcePicker !== "function") return;
+      try {
+        const selected = await w.shopify.resourcePicker({ type: "product", multiple: true });
+        if (!Array.isArray(selected)) return;
+        const newProducts: SlotProduct[] = selected.flatMap((res: unknown) => {
+          const r = res as {
+            id?: string;
+            title?: string;
+            images?: Array<{ originalSrc?: string }>;
+            variants?: Array<{ id?: string; title?: string }>;
+          };
+          if (!r.variants?.length) return [];
+          return r.variants.map((v) => ({
+            shopifyProductId: r.id ?? "",
+            shopifyVariantId: v.id ?? "",
+            productTitle: r.title ?? "",
+            variantTitle: v.title ?? "",
+            productImage: r.images?.[0]?.originalSrc ?? "",
+          }));
+        });
+        setSlots((prev) =>
+          prev.map((s, idx) =>
+            idx === slotIdx ? { ...s, products: [...s.products, ...newProducts] } : s
+          )
+        );
+      } catch {
+        // Resource picker dismissed or unavailable
+      }
+    },
+    []
+  );
+
+  const canAdvance = step === 0 ? name.trim().length > 0 : true;
 
   if (loadingBundle) {
     return (
@@ -155,211 +275,371 @@ export default function AdminBundleForm() {
 
         <BlockStack gap="500">
           {error && (
-            <Banner title="Error saving bundle" tone="critical" onDismiss={() => setError(null)}>
+            <Banner
+              title="Error saving bundle"
+              tone="critical"
+              onDismiss={() => setError(null)}
+            >
               <Text as="p">{error}</Text>
             </Banner>
           )}
 
           <Card>
-            <BlockStack gap="400">
-              <Text as="h2" variant="headingMd">Bundle Details</Text>
-              <Divider />
-              <FormLayout>
-                <TextField
-                  label="Bundle name"
-                  value={name}
-                  onChange={setName}
-                  autoComplete="off"
-                  placeholder="e.g. Summer Starter Bundle"
-                  data-testid="input-bundle-name"
-                />
-                <TextField
-                  label="Description"
-                  value={description}
-                  onChange={setDescription}
-                  multiline={3}
-                  autoComplete="off"
-                  placeholder="Describe what's included in this bundle..."
-                  data-testid="input-bundle-description"
-                />
-                <InlineGrid columns={2} gap="400">
-                  <Select
-                    label="Discount type"
-                    options={[
-                      { label: "Percentage off (%)", value: "percentage" },
-                      { label: "Fixed amount ($)", value: "fixed" },
-                    ]}
-                    value={discountType}
-                    onChange={(v) => setDiscountType(v as "percentage" | "fixed")}
-                    data-testid="select-discount-type"
-                  />
-                  <Select
-                    label="Status"
-                    options={[
-                      { label: "Draft", value: "draft" },
-                      { label: "Active", value: "active" },
-                      { label: "Archived", value: "archived" },
-                    ]}
-                    value={status}
-                    onChange={(v) => setStatus(v as "draft" | "active" | "archived")}
-                    data-testid="select-status"
-                  />
-                </InlineGrid>
-              </FormLayout>
-            </BlockStack>
-          </Card>
-
-          <Card>
-            <BlockStack gap="400">
-              <InlineStack align="space-between">
-                <Text as="h2" variant="headingMd">Discount Tiers</Text>
-                <Button size="slim" onClick={addTier} data-testid="button-add-tier">
-                  Add tier
-                </Button>
-              </InlineStack>
-              <Divider />
-              <Text as="p" tone="subdued">
-                Set quantity thresholds and corresponding{" "}
-                {discountType === "percentage" ? "percentage" : "fixed dollar"} discounts.
-              </Text>
-
-              {tiers.length === 0 && (
-                <Text as="p" tone="subdued" alignment="center">
-                  No discount tiers yet. Add one above.
-                </Text>
-              )}
-
-              <BlockStack gap="300">
-                {tiers.map((tier, i) => (
-                  <InlineGrid key={i} columns="1fr 1fr auto" gap="300" alignItems="end">
-                    <TextField
-                      label={i === 0 ? "Min quantity" : ""}
-                      type="number"
-                      value={String(tier.minQty)}
-                      onChange={(v) => updateTier(i, "minQty", parseInt(v) || 1)}
-                      autoComplete="off"
-                      prefix="≥"
-                      data-testid={`input-tier-qty-${i}`}
-                    />
-                    <TextField
-                      label={i === 0 ? "Discount value" : ""}
-                      type="number"
-                      value={String(tier.discountValue)}
-                      onChange={(v) => updateTier(i, "discountValue", parseFloat(v) || 0)}
-                      autoComplete="off"
-                      suffix={discountType === "percentage" ? "%" : "$"}
-                      data-testid={`input-tier-value-${i}`}
-                    />
-                    <Button
-                      tone="critical"
-                      variant="plain"
-                      onClick={() => removeTier(i)}
-                      data-testid={`button-remove-tier-${i}`}
+            <BlockStack gap="300">
+              <InlineStack align="space-between" blockAlign="center">
+                {STEPS.map((label, idx) => (
+                  <InlineStack key={label} gap="100" blockAlign="center">
+                    <Box
+                      background={step === idx ? "bg-fill-brand" : step > idx ? "bg-fill-success" : "bg-fill-secondary"}
+                      borderRadius="full"
+                      padding="100"
+                      minWidth="28px"
                     >
-                      Remove
-                    </Button>
-                  </InlineGrid>
+                      <Text as="span" variant="bodySm" fontWeight="bold" tone={step === idx ? "text-inverse" : undefined} alignment="center">
+                        {idx + 1}
+                      </Text>
+                    </Box>
+                    <Text
+                      as="span"
+                      variant="bodySm"
+                      fontWeight={step === idx ? "bold" : "regular"}
+                      tone={step === idx ? undefined : "subdued"}
+                    >
+                      {label}
+                    </Text>
+                    {idx < STEPS.length - 1 && (
+                      <Box minWidth="32px">
+                        <Divider />
+                      </Box>
+                    )}
+                  </InlineStack>
                 ))}
-              </BlockStack>
+              </InlineStack>
+              <ProgressBar progress={((step + 1) / STEPS.length) * 100} size="small" />
             </BlockStack>
           </Card>
 
-          <Card>
+          {step === 0 && (
+            <Card>
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">Bundle Details</Text>
+                <Divider />
+                <FormLayout>
+                  <TextField
+                    label="Bundle name"
+                    value={name}
+                    onChange={setName}
+                    autoComplete="off"
+                    placeholder="e.g. Summer Starter Bundle"
+                    helpText="This name will appear to merchants in the dashboard."
+                    data-testid="input-bundle-name"
+                  />
+                  <TextField
+                    label="Description (optional)"
+                    value={description}
+                    onChange={setDescription}
+                    multiline={3}
+                    autoComplete="off"
+                    placeholder="Describe what's included in this bundle..."
+                    data-testid="input-bundle-description"
+                  />
+                  <InlineGrid columns={2} gap="400">
+                    <Select
+                      label="Discount type"
+                      options={[
+                        { label: "Percentage off (%)", value: "percentage" },
+                        { label: "Fixed amount ($)", value: "fixed" },
+                      ]}
+                      value={discountType}
+                      onChange={(v) => setDiscountType(v as "percentage" | "fixed")}
+                      data-testid="select-discount-type"
+                    />
+                    <Select
+                      label="Status"
+                      options={[
+                        { label: "Draft", value: "draft" },
+                        { label: "Active", value: "active" },
+                        { label: "Archived", value: "archived" },
+                      ]}
+                      value={status}
+                      onChange={(v) => setStatus(v as "draft" | "active" | "archived")}
+                      data-testid="select-status"
+                    />
+                  </InlineGrid>
+                </FormLayout>
+              </BlockStack>
+            </Card>
+          )}
+
+          {step === 1 && (
             <BlockStack gap="400">
-              <InlineStack align="space-between">
-                <Text as="h2" variant="headingMd">Products in Bundle</Text>
-                <Button size="slim" onClick={addProduct} data-testid="button-add-product">
-                  Add product
-                </Button>
-              </InlineStack>
-              <Divider />
-              <Text as="p" tone="subdued">
-                Add products to this bundle. Enter product titles (Shopify product picker will be available after connecting your store).
-              </Text>
+              <Card>
+                <BlockStack gap="400">
+                  <InlineStack align="space-between">
+                    <BlockStack gap="100">
+                      <Text as="h2" variant="headingMd">Product Slots</Text>
+                      <Text as="p" tone="subdued">
+                        Each slot lets customers choose from a group of products (e.g. "Choose 1 Shirt").
+                      </Text>
+                    </BlockStack>
+                    <Button onClick={addSlot} data-testid="button-add-slot">
+                      Add slot
+                    </Button>
+                  </InlineStack>
+                  <Divider />
+                  {slots.length === 0 && (
+                    <Box padding="400">
+                      <Text as="p" tone="subdued" alignment="center">
+                        No slots yet. Add a slot to define which products customers can choose from.
+                      </Text>
+                    </Box>
+                  )}
+                </BlockStack>
+              </Card>
 
-              {products.length === 0 && (
-                <Text as="p" tone="subdued" alignment="center">
-                  No products yet. Add one above.
-                </Text>
-              )}
+              {slots.map((slot, slotIdx) => (
+                <Card key={slotIdx}>
+                  <BlockStack gap="400">
+                    <InlineStack align="space-between" blockAlign="start">
+                      <Badge>{`Slot ${slotIdx + 1}`}</Badge>
+                      <Button
+                        tone="critical"
+                        variant="plain"
+                        size="slim"
+                        onClick={() => removeSlot(slotIdx)}
+                        data-testid={`button-remove-slot-${slotIdx}`}
+                      >
+                        Remove slot
+                      </Button>
+                    </InlineStack>
 
-              <BlockStack gap="300">
-                {products.map((product, i) => (
-                  <Box key={i} background="bg-surface-secondary" borderRadius="200" padding="400">
-                    <BlockStack gap="300">
-                      <InlineStack align="space-between">
-                        <Badge>{`Product ${i + 1}`}</Badge>
-                        <Button
-                          tone="critical"
-                          variant="plain"
-                          size="slim"
-                          onClick={() => removeProduct(i)}
-                          data-testid={`button-remove-product-${i}`}
-                        >
-                          Remove
-                        </Button>
-                      </InlineStack>
-                      <InlineGrid columns={2} gap="300">
-                        <TextField
-                          label="Product title"
-                          value={product.productTitle}
-                          onChange={(v) => updateProduct(i, "productTitle", v)}
-                          autoComplete="off"
-                          placeholder="e.g. Aluminum-Free Deodorant"
-                          data-testid={`input-product-title-${i}`}
-                        />
-                        <TextField
-                          label="Shopify Product ID"
-                          value={product.shopifyProductId}
-                          onChange={(v) => updateProduct(i, "shopifyProductId", v)}
-                          autoComplete="off"
-                          placeholder="gid://shopify/Product/123..."
-                          helpText="From your Shopify admin"
-                          data-testid={`input-product-id-${i}`}
-                        />
-                      </InlineGrid>
-                      <InlineGrid columns={2} gap="300">
+                    <FormLayout>
+                      <TextField
+                        label="Slot name"
+                        value={slot.name}
+                        onChange={(v) => updateSlot(slotIdx, "name", v)}
+                        autoComplete="off"
+                        placeholder='e.g. "Choose a Shirt" or "Pick your accessory"'
+                        helpText="Shown to customers on the bundle page."
+                        data-testid={`input-slot-name-${slotIdx}`}
+                      />
+                      <InlineGrid columns={2} gap="400">
                         <TextField
                           label="Min quantity"
                           type="number"
-                          value={String(product.minQty)}
-                          onChange={(v) => updateProduct(i, "minQty", parseInt(v) || 1)}
+                          value={String(slot.minQty)}
+                          onChange={(v) => updateSlot(slotIdx, "minQty", parseInt(v) || 1)}
                           autoComplete="off"
-                          data-testid={`input-product-minqty-${i}`}
+                          helpText="Minimum items to pick from this slot."
+                          data-testid={`input-slot-minqty-${slotIdx}`}
                         />
                         <TextField
                           label="Max quantity (optional)"
                           type="number"
-                          value={product.maxQty != null ? String(product.maxQty) : ""}
-                          onChange={(v) => updateProduct(i, "maxQty", v ? parseInt(v) : null)}
+                          value={slot.maxQty != null ? String(slot.maxQty) : ""}
+                          onChange={(v) => updateSlot(slotIdx, "maxQty", v ? parseInt(v) : null)}
                           autoComplete="off"
-                          placeholder="Unlimited"
-                          data-testid={`input-product-maxqty-${i}`}
+                          placeholder="No limit"
+                          helpText="Leave blank for no maximum."
+                          data-testid={`input-slot-maxqty-${slotIdx}`}
                         />
                       </InlineGrid>
-                    </BlockStack>
-                  </Box>
-                ))}
-              </BlockStack>
-            </BlockStack>
-          </Card>
+                    </FormLayout>
 
-          <InlineStack align="end" gap="300">
+                    <Divider />
+
+                    <InlineStack align="space-between" blockAlign="center">
+                      <Text as="h3" variant="headingSm">
+                        Products in this slot ({slot.products.length})
+                      </Text>
+                      <InlineStack gap="200">
+                        <Button
+                          size="slim"
+                          onClick={() => pickProductsFromShopify(slotIdx)}
+                          data-testid={`button-pick-products-${slotIdx}`}
+                        >
+                          Browse Shopify products
+                        </Button>
+                        <Button
+                          size="slim"
+                          variant="plain"
+                          onClick={() => addProductToSlot(slotIdx)}
+                          data-testid={`button-add-product-${slotIdx}`}
+                        >
+                          Add manually
+                        </Button>
+                      </InlineStack>
+                    </InlineStack>
+
+                    {slot.products.length === 0 && (
+                      <Text as="p" tone="subdued" alignment="center">
+                        No products yet. Use "Browse Shopify products" when connected, or add manually.
+                      </Text>
+                    )}
+
+                    <BlockStack gap="300">
+                      {slot.products.map((product, productIdx) => (
+                        <Box
+                          key={productIdx}
+                          background="bg-surface-secondary"
+                          borderRadius="200"
+                          padding="400"
+                        >
+                          <BlockStack gap="300">
+                            <InlineStack align="space-between">
+                              <Badge tone="info">{`Product ${productIdx + 1}`}</Badge>
+                              <Button
+                                tone="critical"
+                                variant="plain"
+                                size="slim"
+                                onClick={() => removeProductFromSlot(slotIdx, productIdx)}
+                                data-testid={`button-remove-product-${slotIdx}-${productIdx}`}
+                              >
+                                Remove
+                              </Button>
+                            </InlineStack>
+                            <InlineGrid columns={2} gap="300">
+                              <TextField
+                                label="Product title"
+                                value={product.productTitle}
+                                onChange={(v) =>
+                                  updateProductInSlot(slotIdx, productIdx, "productTitle", v)
+                                }
+                                autoComplete="off"
+                                placeholder="e.g. Classic Crew Tee"
+                                data-testid={`input-product-title-${slotIdx}-${productIdx}`}
+                              />
+                              <TextField
+                                label="Shopify Product ID (GID)"
+                                value={product.shopifyProductId}
+                                onChange={(v) =>
+                                  updateProductInSlot(slotIdx, productIdx, "shopifyProductId", v)
+                                }
+                                autoComplete="off"
+                                placeholder="gid://shopify/Product/123..."
+                                helpText="From your Shopify admin"
+                                data-testid={`input-product-id-${slotIdx}-${productIdx}`}
+                              />
+                            </InlineGrid>
+                            <InlineGrid columns={2} gap="300">
+                              <TextField
+                                label="Variant ID (optional)"
+                                value={product.shopifyVariantId}
+                                onChange={(v) =>
+                                  updateProductInSlot(slotIdx, productIdx, "shopifyVariantId", v)
+                                }
+                                autoComplete="off"
+                                placeholder="gid://shopify/ProductVariant/..."
+                                helpText="Leave blank to allow any variant."
+                                data-testid={`input-variant-id-${slotIdx}-${productIdx}`}
+                              />
+                              <TextField
+                                label="Variant title (optional)"
+                                value={product.variantTitle}
+                                onChange={(v) =>
+                                  updateProductInSlot(slotIdx, productIdx, "variantTitle", v)
+                                }
+                                autoComplete="off"
+                                placeholder="e.g. Red / Large"
+                                data-testid={`input-variant-title-${slotIdx}-${productIdx}`}
+                              />
+                            </InlineGrid>
+                          </BlockStack>
+                        </Box>
+                      ))}
+                    </BlockStack>
+                  </BlockStack>
+                </Card>
+              ))}
+            </BlockStack>
+          )}
+
+          {step === 2 && (
+            <Card>
+              <BlockStack gap="400">
+                <InlineStack align="space-between">
+                  <BlockStack gap="100">
+                    <Text as="h2" variant="headingMd">Discount Tiers</Text>
+                    <Text as="p" tone="subdued">
+                      Set quantity thresholds and corresponding{" "}
+                      {discountType === "percentage" ? "percentage" : "fixed dollar"} discounts.
+                    </Text>
+                  </BlockStack>
+                  <Button onClick={addTier} data-testid="button-add-tier">
+                    Add tier
+                  </Button>
+                </InlineStack>
+                <Divider />
+
+                {tiers.length === 0 && (
+                  <Text as="p" tone="subdued" alignment="center">
+                    No discount tiers yet. Add one above.
+                  </Text>
+                )}
+
+                <BlockStack gap="300">
+                  {tiers.map((tier, i) => (
+                    <InlineGrid key={i} columns="1fr 1fr auto" gap="300" alignItems="end">
+                      <TextField
+                        label={i === 0 ? "Min quantity (items in cart)" : ""}
+                        type="number"
+                        value={String(tier.minQty)}
+                        onChange={(v) => updateTier(i, "minQty", parseInt(v) || 1)}
+                        autoComplete="off"
+                        prefix="≥"
+                        data-testid={`input-tier-qty-${i}`}
+                      />
+                      <TextField
+                        label={i === 0 ? "Discount value" : ""}
+                        type="number"
+                        value={String(tier.discountValue)}
+                        onChange={(v) => updateTier(i, "discountValue", parseFloat(v) || 0)}
+                        autoComplete="off"
+                        suffix={discountType === "percentage" ? "%" : "$"}
+                        data-testid={`input-tier-value-${i}`}
+                      />
+                      <Button
+                        tone="critical"
+                        variant="plain"
+                        onClick={() => removeTier(i)}
+                        data-testid={`button-remove-tier-${i}`}
+                      >
+                        Remove
+                      </Button>
+                    </InlineGrid>
+                  ))}
+                </BlockStack>
+              </BlockStack>
+            </Card>
+          )}
+
+          <InlineStack align="space-between">
             <Button
-              onClick={() => navigate("/admin/bundles")}
-              data-testid="button-cancel"
+              onClick={() => (step === 0 ? navigate("/admin/bundles") : setStep((s) => (s - 1) as StepIndex))}
+              data-testid="button-back"
             >
-              Cancel
+              {step === 0 ? "Cancel" : "Back"}
             </Button>
-            <Button
-              variant="primary"
-              loading={saveMutation.isPending}
-              disabled={!name.trim()}
-              onClick={() => saveMutation.mutate()}
-              data-testid="button-save-bundle"
-            >
-              {isNew ? "Create bundle" : "Save changes"}
-            </Button>
+            {step < 2 ? (
+              <Button
+                variant="primary"
+                disabled={!canAdvance}
+                onClick={() => setStep((s) => (s + 1) as StepIndex)}
+                data-testid="button-next"
+              >
+                Next: {STEPS[step + 1]}
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                loading={saveMutation.isPending}
+                disabled={!name.trim()}
+                onClick={() => saveMutation.mutate()}
+                data-testid="button-save-bundle"
+              >
+                {isNew ? "Create bundle" : "Save changes"}
+              </Button>
+            )}
           </InlineStack>
         </BlockStack>
       </Page>

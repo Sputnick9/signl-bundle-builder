@@ -42,25 +42,37 @@ export const insertBundleSchema = createInsertSchema(bundles).omit({
 });
 export type InsertBundle = z.infer<typeof insertBundleSchema>;
 
-export const bundleProducts = pgTable("bundle_products", {
+export const bundleSlots = pgTable("bundle_slots", {
   id: serial("id").primaryKey(),
   bundleId: integer("bundle_id").notNull().references(() => bundles.id, { onDelete: "cascade" }),
-  shopifyProductId: text("shopify_product_id").notNull(),
-  productTitle: text("product_title").notNull(),
-  productImage: text("product_image"),
+  name: text("name").notNull(),
+  position: integer("position").notNull().default(0),
   minQty: integer("min_qty").notNull().default(1),
   maxQty: integer("max_qty"),
 });
 
-export type BundleProduct = typeof bundleProducts.$inferSelect;
+export type BundleSlot = typeof bundleSlots.$inferSelect;
+export type InsertBundleSlot = typeof bundleSlots.$inferInsert;
 
-export const insertBundleProductSchema = createInsertSchema(bundleProducts).omit({
-  id: true,
+export const bundleSlotProducts = pgTable("bundle_slot_products", {
+  id: serial("id").primaryKey(),
+  slotId: integer("slot_id").notNull().references(() => bundleSlots.id, { onDelete: "cascade" }),
+  shopifyProductId: text("shopify_product_id").notNull(),
+  shopifyVariantId: text("shopify_variant_id"),
+  productTitle: text("product_title").notNull(),
+  variantTitle: text("variant_title"),
+  productImage: text("product_image"),
 });
-export type InsertBundleProduct = z.infer<typeof insertBundleProductSchema>;
 
-export interface BundleWithProducts extends Bundle {
-  products: BundleProduct[];
+export type BundleSlotProduct = typeof bundleSlotProducts.$inferSelect;
+export type InsertBundleSlotProduct = typeof bundleSlotProducts.$inferInsert;
+
+export interface BundleSlotWithProducts extends BundleSlot {
+  products: BundleSlotProduct[];
+}
+
+export interface BundleWithSlots extends Bundle {
+  slots: BundleSlotWithProducts[];
 }
 
 export interface ScentVariant {

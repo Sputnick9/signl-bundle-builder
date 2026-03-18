@@ -14,14 +14,22 @@ import {
   deleteBundle,
   toBundleInsert,
 } from "./bundle-db";
+import type { SlotSeed } from "./bundle-db";
 import { z } from "zod";
 
-const bundleProductSchema = z.object({
-  shopifyProductId: z.string(),
+const slotProductSchema = z.object({
+  shopifyProductId: z.string().min(1),
+  shopifyVariantId: z.string().nullable().optional(),
   productTitle: z.string().min(1),
+  variantTitle: z.string().nullable().optional(),
   productImage: z.string().nullable().optional(),
+});
+
+const bundleSlotSchema = z.object({
+  name: z.string().min(1),
   minQty: z.number().int().min(1).default(1),
   maxQty: z.number().int().min(1).nullable().optional(),
+  products: z.array(slotProductSchema).default([]),
 });
 
 const bundleBodySchema = z.object({
@@ -33,7 +41,7 @@ const bundleBodySchema = z.object({
     z.object({ minQty: z.number().int().min(1), discountValue: z.number().min(0) })
   ).default([]),
   status: z.enum(["draft", "active", "archived"]).default("draft"),
-  products: z.array(bundleProductSchema).default([]),
+  slots: z.array(bundleSlotSchema).default([]),
 });
 
 function verifyWebhookHmac(body: string, hmacHeader: string): boolean {
@@ -286,19 +294,24 @@ export async function registerRoutes(
       res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
       return;
     }
-    const { products, ...rawBundle } = parsed.data;
+    const { slots, ...rawBundle } = parsed.data;
     const authedReq = req as AuthenticatedRequest;
     const canonicalShop = authedReq.shopifyShop || rawBundle.shop || "dev-preview";
     try {
       const bundleInsert = toBundleInsert({ ...rawBundle, shop: canonicalShop });
-      const productSeeds = products.map((p) => ({
-        shopifyProductId: p.shopifyProductId,
-        productTitle: p.productTitle,
-        productImage: p.productImage ?? null,
-        minQty: p.minQty,
-        maxQty: p.maxQty ?? null,
+      const slotSeeds: SlotSeed[] = slots.map((s) => ({
+        name: s.name,
+        minQty: s.minQty,
+        maxQty: s.maxQty ?? null,
+        products: s.products.map((p) => ({
+          shopifyProductId: p.shopifyProductId,
+          shopifyVariantId: p.shopifyVariantId ?? null,
+          productTitle: p.productTitle,
+          variantTitle: p.variantTitle ?? null,
+          productImage: p.productImage ?? null,
+        })),
       }));
-      const bundle = await createBundle(bundleInsert, productSeeds);
+      const bundle = await createBundle(bundleInsert, slotSeeds);
       res.status(201).json(bundle);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error";
@@ -318,7 +331,7 @@ export async function registerRoutes(
       res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
       return;
     }
-    const { products, shop: _clientShop, ...rawBundle } = parsed.data;
+    const { slots, shop: _clientShop, ...rawBundle } = parsed.data;
     const authedReq = req as AuthenticatedRequest;
     const canonicalShop = authedReq.shopifyShop || _clientShop || "dev-preview";
     try {
@@ -330,15 +343,20 @@ export async function registerRoutes(
         ...(rawBundle.status !== undefined && { status: rawBundle.status }),
       };
 
-      const productSeeds = products?.map((p) => ({
-        shopifyProductId: p.shopifyProductId ?? "",
-        productTitle: p.productTitle ?? "",
-        productImage: p.productImage ?? null,
-        minQty: p.minQty ?? 1,
-        maxQty: p.maxQty ?? null,
+      const slotSeeds: SlotSeed[] | undefined = slots?.map((s) => ({
+        name: s.name,
+        minQty: s.minQty ?? 1,
+        maxQty: s.maxQty ?? null,
+        products: (s.products ?? []).map((p) => ({
+          shopifyProductId: p.shopifyProductId ?? "",
+          shopifyVariantId: p.shopifyVariantId ?? null,
+          productTitle: p.productTitle ?? "",
+          variantTitle: p.variantTitle ?? null,
+          productImage: p.productImage ?? null,
+        })),
       }));
 
-      const bundle = await updateBundle(id, canonicalShop, updateData, productSeeds);
+      const bundle = await updateBundle(id, canonicalShop, updateData, slotSeeds);
       if (!bundle) {
         res.status(404).json({ error: "Bundle not found" });
         return;
