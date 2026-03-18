@@ -17,6 +17,7 @@ import { TitleBar } from "@shopify/app-bridge-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import type { Bundle } from "@shared/schema";
+import { apiRequest } from "@/lib/queryClient";
 
 function SetupBanner() {
   return (
@@ -122,21 +123,13 @@ function DiscountFunctionCard({ shop }: { shop: string }) {
 
   const register = useMutation({
     mutationFn: () =>
-      fetch("/api/shop/discount", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shop }),
-      }).then((r) => r.json()),
+      apiRequest("POST", `/api/shop/discount?shop=${encodeURIComponent(shop)}`, {}).then((r) => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: discountKey }),
   });
 
   const deregister = useMutation({
     mutationFn: () =>
-      fetch("/api/shop/discount", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shop, discountId: status?.discountId }),
-      }).then((r) => r.json()),
+      apiRequest("DELETE", `/api/shop/discount?shop=${encodeURIComponent(shop)}`, { discountId: status?.discountId }).then((r) => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: discountKey }),
   });
 

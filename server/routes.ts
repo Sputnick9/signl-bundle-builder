@@ -540,13 +540,16 @@ export async function registerRoutes(
   });
 
   /* ── Shopify Function discount registration ───────────────────────────── */
+  // All three endpoints require shopifyAuth so shop is always derived from
+  // the authenticated Shopify session token, never trusted from request body/query.
 
-  app.get("/api/shop/discount", async (req: Request, res: Response) => {
-    const shop = (req.query.shop as string) || "";
+  app.get("/api/shop/discount", shopifyAuth, async (req: Request, res: Response) => {
     if (!shopifyConfigured) {
       res.json({ configured: false, functionIdSet: false, active: false });
       return;
     }
+    const authedReq = req as AuthenticatedRequest;
+    const shop = resolveShop(authedReq) || "";
     const functionId = process.env.SHOPIFY_FUNCTION_ID || "";
     if (!functionId) {
       res.json({ configured: true, functionIdSet: false, active: false });
@@ -598,19 +601,22 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/shop/discount", async (req: Request, res: Response) => {
+  app.post("/api/shop/discount", shopifyAuth, async (req: Request, res: Response) => {
     if (!shopifyConfigured) {
       res.status(503).json({ error: "Shopify not configured" });
       return;
     }
     const functionId = process.env.SHOPIFY_FUNCTION_ID || "";
     if (!functionId) {
-      res.status(400).json({ error: "SHOPIFY_FUNCTION_ID env var not set. Deploy the function first with `shopify app deploy`." });
+      res.status(400).json({
+        error: "SHOPIFY_FUNCTION_ID is not configured. Run `shopify app deploy` to deploy the function, then set SHOPIFY_FUNCTION_ID to the returned function ID in your Replit Secrets.",
+      });
       return;
     }
-    const { shop } = req.body as { shop?: string };
+    const authedReq = req as AuthenticatedRequest;
+    const shop = resolveShop(authedReq);
     if (!shop) {
-      res.status(400).json({ error: "Missing shop" });
+      res.status(401).json({ error: "Unauthorized: missing shop context" });
       return;
     }
     try {
@@ -629,14 +635,20 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/shop/discount", async (req: Request, res: Response) => {
+  app.delete("/api/shop/discount", shopifyAuth, async (req: Request, res: Response) => {
     if (!shopifyConfigured) {
       res.status(503).json({ error: "Shopify not configured" });
       return;
     }
-    const { shop, discountId } = req.body as { shop?: string; discountId?: string };
-    if (!shop || !discountId) {
-      res.status(400).json({ error: "Missing shop or discountId" });
+    const authedReq = req as AuthenticatedRequest;
+    const shop = resolveShop(authedReq);
+    if (!shop) {
+      res.status(401).json({ error: "Unauthorized: missing shop context" });
+      return;
+    }
+    const { discountId } = req.body as { discountId?: string };
+    if (!discountId) {
+      res.status(400).json({ error: "Missing discountId" });
       return;
     }
     try {
