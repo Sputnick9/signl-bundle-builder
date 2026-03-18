@@ -22,9 +22,12 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
+const MYSHOPIFY_DOMAIN_RE = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i;
+
 app.use((req: Request, res: Response, next: NextFunction) => {
   res.removeHeader("X-Frame-Options");
-  const shop = req.query.shop as string | undefined;
+  const shopRaw = req.query.shop as string | undefined;
+  const shop = shopRaw && MYSHOPIFY_DOMAIN_RE.test(shopRaw) ? shopRaw : null;
   if (shop) {
     res.setHeader(
       "Content-Security-Policy",
