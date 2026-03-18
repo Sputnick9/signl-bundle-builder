@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { shopSubscriptions } from "@shared/schema";
 import { eq } from "drizzle-orm";
+
 function log(msg: string) {
   console.log(`[billing] ${msg}`);
 }
@@ -34,7 +35,7 @@ export async function getSubscriptionStatus(shop: string): Promise<BillingStatus
     }
 
     const sub = rows[0];
-    const active = sub.status === "active" || sub.status === "pending";
+    const active = sub.status === "active";
     return {
       hasSubscription: active,
       status: sub.status as SubscriptionStatus,
@@ -57,7 +58,7 @@ export async function upsertSubscription(
 ): Promise<void> {
   const now = new Date();
   const activatedAt = status === "active" ? now : null;
-  const cancelledAt = status === "cancelled" ? now : null;
+  const cancelledAt = (status === "cancelled" || status === "declined" || status === "expired") ? now : null;
 
   const existing = await db
     .select()
@@ -71,7 +72,7 @@ export async function upsertSubscription(
       .set({
         chargeId,
         status,
-        ...(activatedAt && { activatedAt }),
+        ...(activatedAt && !existing[0].activatedAt && { activatedAt }),
         ...(cancelledAt && { cancelledAt }),
         updatedAt: now,
       })
@@ -171,9 +172,6 @@ export async function verifyAppSubscription(
           ... on AppSubscription {
             id
             status
-            name
-            createdAt
-            currentPeriodEnd
           }
         }
       }`,
@@ -182,9 +180,55 @@ export async function verifyAppSubscription(
   });
 
   const body = result.body as unknown as Record<string, unknown>;
-  const node = (body.data as Record<string, unknown>)?.node as Record<string, unknown> | undefined;
-  const status = ((node?.status as string | undefined) ?? "pending").toLowerCase();
+  const errors = body.errors as unknown[] | undefined;
+  if (errors?.length) {
+    throw new Error(`GraphQL errors: ${JSON.stringify(errors)}`);
+  }
 
+  const node = (body.data as Record<string, unknown>)?.node as Record<string, unknown> | null | undefined;
+  if (!node || !node.status) {
+    throw new Error(`Subscription ${chargeId} not found or is not an AppSubscription`);
+  }
+
+  const status = (node.status as string).toLowerCase();
   await upsertSubscription(session.shop, chargeId, status);
   return status;
+}
+
+export async function checkSubscriptionLive(
+  shopifyInstance: NonNullable<import("./shopify").GetShopifyReturn>,
+  session: import("@shopify/shopify-api").Session
+): Promise<boolean> {
+  const client = new shopifyInstance.clients.Graphql({ session });
+
+  const result = await client.query({
+    data: {
+      query: `query {
+        currentAppInstallation {
+          activeSubscriptions {
+            id
+            status
+            name
+          }
+        }
+      }`,
+    },
+  });
+
+  const body = result.body as unknown as Record<string, unknown>;
+  const installation = (body.data as Record<string, unknown>)?.currentAppInstallation as Record<string, unknown> | undefined;
+  const subs = installation?.activeSubscriptions as Array<Record<string, unknown>> | undefined;
+
+  if (!subs?.length) {
+    return false;
+  }
+
+  const active = subs.find((s) => (s.status as string)?.toLowerCase() === "active");
+  if (active) {
+    const chargeId = active.id as string;
+    await upsertSubscription(session.shop, chargeId, "active");
+    return true;
+  }
+
+  return false;
 }

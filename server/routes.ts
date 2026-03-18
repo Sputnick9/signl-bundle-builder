@@ -8,6 +8,7 @@ import { getShopify, shopifyConfigured, sessionStorage, getAppUrl } from "./shop
 import { log } from "./index";
 import {
   getSubscriptionStatus,
+  checkSubscriptionLive,
   createAppSubscription,
   verifyAppSubscription,
   PLAN_NAME,
@@ -93,6 +94,7 @@ function getRawBody(req: Request): string {
 
 interface AuthenticatedRequest extends Request {
   shopifyShop?: string;
+  billingChecked?: boolean;
 }
 
 function makeShopifyAuthMiddleware() {
@@ -145,6 +147,55 @@ function resolveShop(
     return candidate;
   }
   return candidate || "dev-preview";
+}
+
+function makeRequireActiveSubscription() {
+  const shopify = getShopify();
+  return async function requireActiveSubscription(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    if (!shopify || !shopifyConfigured) {
+      next();
+      return;
+    }
+    const shop = resolveShop(req);
+    if (!shop) {
+      res.status(401).json({ error: "Unauthorized: missing shop context" });
+      return;
+    }
+    try {
+      const localStatus = await getSubscriptionStatus(shop);
+      if (localStatus.hasSubscription) {
+        next();
+        return;
+      }
+      if (localStatus.chargeId) {
+        const sessions = await sessionStorage.findSessionsByShop(shop);
+        const session = sessions.find((s) => !!s.accessToken);
+        if (session) {
+          try {
+            const isLive = await checkSubscriptionLive(shopify, session);
+            if (isLive) {
+              next();
+              return;
+            }
+          } catch (liveErr) {
+            log(`Billing live check warning for ${shop}: ${liveErr instanceof Error ? liveErr.message : String(liveErr)}`);
+          }
+        }
+      }
+      res.status(402).json({
+        error: "Subscription required",
+        billingRequired: true,
+        message: "An active SiGNL Bundle Builder subscription is required to use this app.",
+      });
+    } catch (err) {
+      log(`requireActiveSubscription error for ${shop}: ${err instanceof Error ? err.message : String(err)}`);
+      next();
+    }
+  };
 }
 
 async function ensureAutomaticDiscount(
@@ -217,6 +268,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   const shopify = getShopify();
   const shopifyAuth = makeShopifyAuthMiddleware();
+  const requireBilling = makeRequireActiveSubscription();
 
   if (shopify && shopifyConfigured) {
     app.get("/auth", async (req: Request, res: Response) => {
@@ -371,7 +423,7 @@ export async function registerRoutes(
     });
   }
 
-  app.get("/api/bundles", shopifyAuth, async (req: Request, res: Response) => {
+  app.get("/api/bundles", shopifyAuth, requireBilling, async (req: Request, res: Response) => {
     const authedReq = req as AuthenticatedRequest;
     const shop = resolveShop(authedReq);
     if (!shop) {
@@ -388,7 +440,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/bundles/:id", shopifyAuth, async (req: Request, res: Response) => {
+  app.get("/api/bundles/:id", shopifyAuth, requireBilling, async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) {
       res.status(400).json({ error: "Invalid bundle ID" });
@@ -414,7 +466,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/bundles", shopifyAuth, async (req: Request, res: Response) => {
+  app.post("/api/bundles", shopifyAuth, requireBilling, async (req: Request, res: Response) => {
     const parsed = bundleBodySchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
@@ -450,7 +502,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/bundles/:id", shopifyAuth, async (req: Request, res: Response) => {
+  app.put("/api/bundles/:id", shopifyAuth, requireBilling, async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) {
       res.status(400).json({ error: "Invalid bundle ID" });
@@ -504,7 +556,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/bundles/:id", shopifyAuth, async (req: Request, res: Response) => {
+  app.delete("/api/bundles/:id", shopifyAuth, requireBilling, async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) {
       res.status(400).json({ error: "Invalid bundle ID" });
@@ -866,8 +918,8 @@ export async function registerRoutes(
 
       if (!chargeId) {
         const redirectUrl = host
-          ? `/?shop=${shop}&host=${host}&billing=declined`
-          : `/?shop=${shop}&billing=declined`;
+          ? `/billing?shop=${shop}&host=${host}&billing=declined`
+          : `/billing?shop=${shop}&billing=declined`;
         res.redirect(redirectUrl);
         return;
       }
@@ -882,16 +934,23 @@ export async function registerRoutes(
         const status = await verifyAppSubscription(shopify, session, chargeId);
         log(`Billing return for ${shop}: charge ${chargeId} status=${status}`);
 
-        const redirectUrl = host
-          ? `/?shop=${shop}&host=${host}&billing=${status}`
-          : `/?shop=${shop}&billing=${status}`;
-        res.redirect(redirectUrl);
+        if (status === "active" || status === "pending") {
+          const redirectUrl = host
+            ? `/?shop=${shop}&host=${host}`
+            : `/?shop=${shop}`;
+          res.redirect(redirectUrl);
+        } else {
+          const redirectUrl = host
+            ? `/billing?shop=${shop}&host=${host}&billing=${status}`
+            : `/billing?shop=${shop}&billing=${status}`;
+          res.redirect(redirectUrl);
+        }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Unknown error";
         log(`Billing return error: ${msg}`);
         const redirectUrl = host
-          ? `/?shop=${shop}&host=${host}&billing=error`
-          : `/?shop=${shop}&billing=error`;
+          ? `/billing?shop=${shop}&host=${host}&billing=error`
+          : `/billing?shop=${shop}&billing=error`;
         res.redirect(redirectUrl);
       }
     });
