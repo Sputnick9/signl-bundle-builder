@@ -11,9 +11,10 @@ import {
   Divider,
   Badge,
   InlineStack,
+  Spinner,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import type { Bundle } from "@shared/schema";
 
@@ -61,8 +62,8 @@ function RoadmapCard() {
   const steps = [
     { label: "App Foundation & OAuth", done: true },
     { label: "Bundle Admin UI (Polaris)", done: true },
-    { label: "Theme App Extension (Storefront)", done: false },
-    { label: "Shopify Functions (Real Discounts)", done: false },
+    { label: "Theme App Extension (Storefront)", done: true },
+    { label: "Shopify Functions (Real Discounts)", done: true },
     { label: "Billing & Subscriptions", done: false },
   ];
 
@@ -93,6 +94,120 @@ function RoadmapCard() {
               </Text>
             </InlineStack>
           ))}
+        </BlockStack>
+      </BlockStack>
+    </Card>
+  );
+}
+
+interface DiscountStatus {
+  configured: boolean;
+  functionIdSet: boolean;
+  active: boolean;
+  discountId?: string | null;
+  title?: string | null;
+  error?: string;
+}
+
+function DiscountFunctionCard({ shop }: { shop: string }) {
+  const qc = useQueryClient();
+  const discountKey = ["/api/shop/discount", shop];
+
+  const { data: status, isLoading } = useQuery<DiscountStatus>({
+    queryKey: discountKey,
+    queryFn: () =>
+      fetch(`/api/shop/discount?shop=${encodeURIComponent(shop)}`).then((r) => r.json()),
+    enabled: !!shop,
+  });
+
+  const register = useMutation({
+    mutationFn: () =>
+      fetch("/api/shop/discount", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shop }),
+      }).then((r) => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: discountKey }),
+  });
+
+  const deregister = useMutation({
+    mutationFn: () =>
+      fetch("/api/shop/discount", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shop, discountId: status?.discountId }),
+      }).then((r) => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: discountKey }),
+  });
+
+  return (
+    <Card>
+      <BlockStack gap="400">
+        <InlineStack align="space-between" blockAlign="center">
+          <Text as="h2" variant="headingMd">Discount Function</Text>
+          {isLoading ? (
+            <Spinner size="small" />
+          ) : status?.active ? (
+            <Badge tone="success" data-testid="badge-discount-active">Active</Badge>
+          ) : (
+            <Badge tone="warning" data-testid="badge-discount-inactive">Inactive</Badge>
+          )}
+        </InlineStack>
+        <Divider />
+        <BlockStack gap="300">
+          {!status?.configured && (
+            <Text as="p" tone="subdued">Configure Shopify credentials to enable automatic discounts.</Text>
+          )}
+          {status?.configured && !status.functionIdSet && (
+            <Banner tone="warning">
+              <Text as="p">
+                Set the <code>SHOPIFY_FUNCTION_ID</code> environment variable after running{" "}
+                <code>shopify app deploy</code> to activate checkout discounts.
+              </Text>
+            </Banner>
+          )}
+          {status?.configured && status.functionIdSet && (
+            <>
+              <Text as="p" tone="subdued">
+                {status.active
+                  ? `Automatic discount "${status.title}" is active at checkout. Bundle items are discounted based on their configured tiers.`
+                  : "The Shopify Function is deployed but the automatic discount has not been registered for this shop yet."}
+              </Text>
+              {status.error && (
+                <Text as="p" tone="critical">{status.error}</Text>
+              )}
+              <InlineStack gap="300">
+                {!status.active && (
+                  <Button
+                    variant="primary"
+                    onClick={() => register.mutate()}
+                    loading={register.isPending}
+                    data-testid="button-register-discount"
+                  >
+                    Register Discount
+                  </Button>
+                )}
+                {status.active && status.discountId && (
+                  <Button
+                    tone="critical"
+                    onClick={() => deregister.mutate()}
+                    loading={deregister.isPending}
+                    data-testid="button-deregister-discount"
+                  >
+                    Deactivate Discount
+                  </Button>
+                )}
+              </InlineStack>
+            </>
+          )}
+          <Divider />
+          <BlockStack gap="100">
+            <Text as="p" tone="subdued" variant="bodySm">How it works</Text>
+            <Text as="p" variant="bodySm">
+              When customers add a bundle to their cart, bundle items are tagged with the configured discount tiers.
+              The Shopify Function reads these at checkout and automatically applies the correct percentage off — no discount codes needed.
+            </Text>
+          </BlockStack>
         </BlockStack>
       </BlockStack>
     </Card>
@@ -176,6 +291,8 @@ export default function AdminHome() {
               </BlockStack>
             </Card>
           </InlineGrid>
+
+          <DiscountFunctionCard shop={shopParam} />
 
           <Card>
             <BlockStack gap="400">

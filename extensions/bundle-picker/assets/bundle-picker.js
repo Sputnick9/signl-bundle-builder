@@ -476,15 +476,16 @@
     var slotSels = this.selections[bundle.id] || {};
     var items = [];
 
+    var bundleProps = {
+      "_bundleId": String(bundle.id),
+      "_discountTiers": JSON.stringify(bundle.discountTiers || []),
+      "_discountType": bundle.discountType || "percentage",
+    };
+
     Object.values(slotSels).forEach(function (slotSel) {
       Object.values(slotSel).forEach(function (item) {
         if (item.resolvedVariantId && item.qty > 0) {
-          var existing = items.find(function (i) { return i.id === item.resolvedVariantId; });
-          if (existing) {
-            existing.quantity += item.qty;
-          } else {
-            items.push({ id: item.resolvedVariantId, quantity: item.qty });
-          }
+          items.push({ id: item.resolvedVariantId, quantity: item.qty, properties: bundleProps });
         }
       });
     });

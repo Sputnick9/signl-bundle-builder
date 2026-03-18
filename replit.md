@@ -25,12 +25,20 @@ A full Shopify embedded app that allows merchants to create and manage product b
 3. **Task 3 — Theme App Extension** ✅ COMPLETE
    - `extensions/bundle-picker/` directory with `shopify.extension.toml`
    - `blocks/bundle-picker.liquid` — Shopify OS 2.0 App Block (target: section)
-   - `assets/bundle-picker.js` — slot-based picker (fetches API, variant picker modal, AJAX cart)
+   - `assets/bundle-picker.js` — slot-based picker (fetches API, variant picker modal, AJAX cart); adds `_bundleId`/`_discountTiers`/`_discountType` cart line properties for Function
    - `assets/bundle-picker.css` — scoped BEM-style CSS matching `#2A9D8F` brand
-   - `GET /api/storefront/bundles` — public CORS endpoint: active bundles for a product
-   - `GET /api/storefront/product-variants` — CORS proxy via Shopify Admin API for variant resolution
+   - `GET /api/storefront/bundles` — public CORS endpoint with server-side variant enrichment (5-min cache); no open Admin API proxy
    - `getBundlesForProduct()` in `server/bundle-db.ts` — DB query using JOIN across slots
-4. **Task 4 — Shopify Functions (Real Discounts)** ⏳ Pending
+4. **Task 4 — Shopify Functions (Real Discounts)** ✅ COMPLETE
+   - `extensions/bundle-discount/` — Shopify Function extension (type: `product_discounts`)
+   - `shopify.extension.toml` — Shopify CLI 3.x manifest (api_version 2024-04)
+   - `input.graphql` — queries cart lines + all attributes
+   - `src/run.js` — pure JS function: groups lines by `_bundleId`, selects best discount tier by total qty, returns `productVariant` targets with percentage/fixed discount; standalone items unaffected
+   - `esbuild.config.mjs` + `package.json` — build toolchain (esbuild bundle → javy WASM compile)
+   - `server/routes.ts`: `ensureAutomaticDiscount()` helper registers one automatic discount per shop via `discountAutomaticAppCreate` GraphQL mutation (idempotent — checks first)
+   - `GET/POST/DELETE /api/shop/discount` — manage discount registration per shop
+   - Auto-registers discount in OAuth callback when `SHOPIFY_FUNCTION_ID` env var is set
+   - Admin home: `DiscountFunctionCard` shows active/inactive status; Register/Deactivate buttons; "How it works" explainer
 5. **Task 5 — Billing & Subscriptions** ⏳ Pending
 
 ## Database Schema

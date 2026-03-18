@@ -138,6 +138,70 @@ function resolveShop(
   return candidate || "dev-preview";
 }
 
+async function ensureAutomaticDiscount(
+  shopifyInstance: NonNullable<ReturnType<typeof getShopify>>,
+  session: Awaited<ReturnType<typeof sessionStorage.findSessionsByShop>>[number],
+  functionId: string
+): Promise<string | null> {
+  const client = new shopifyInstance.clients.Graphql({ session });
+
+  const listResult = await client.query({
+    data: {
+      query: `query {
+        automaticDiscountNodes(first: 20) {
+          nodes {
+            id
+            automaticDiscount {
+              ... on DiscountAutomaticApp {
+                title
+                appDiscountType { functionId }
+              }
+            }
+          }
+        }
+      }`,
+    },
+  });
+
+  const listBody = listResult.body as Record<string, unknown>;
+  const nodes = ((listBody.data as Record<string, unknown>)?.automaticDiscountNodes as Record<string, unknown>)?.nodes as Array<Record<string, unknown>> ?? [];
+  const existing = nodes.find((n) => {
+    const d = n.automaticDiscount as Record<string, unknown> | undefined;
+    return (d?.appDiscountType as Record<string, unknown> | undefined)?.functionId === functionId;
+  });
+
+  if (existing) return existing.id as string;
+
+  const createResult = await client.query({
+    data: {
+      query: `mutation DiscountAutomaticAppCreate($automaticAppDiscount: DiscountAutomaticAppInput!) {
+        discountAutomaticAppCreate(automaticAppDiscount: $automaticAppDiscount) {
+          automaticAppDiscount { discountId }
+          userErrors { field message }
+        }
+      }`,
+      variables: {
+        automaticAppDiscount: {
+          title: "SiGNL Bundle Discount",
+          functionId,
+          startsAt: new Date().toISOString(),
+          combinesWith: {
+            orderDiscounts: false,
+            productDiscounts: false,
+            shippingDiscounts: true,
+          },
+        },
+      },
+    },
+  });
+
+  const createBody = createResult.body as Record<string, unknown>;
+  const created = ((createBody.data as Record<string, unknown>)?.discountAutomaticAppCreate as Record<string, unknown>)?.automaticAppDiscount as Record<string, unknown> | undefined;
+  const errors = ((createBody.data as Record<string, unknown>)?.discountAutomaticAppCreate as Record<string, unknown>)?.userErrors as Array<{ field: string; message: string }> | undefined;
+  if (errors?.length) throw new Error(errors.map((e) => e.message).join(", "));
+  return (created?.discountId as string) ?? null;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -185,6 +249,17 @@ export async function registerRoutes(
         } catch (webhookErr: unknown) {
           const msg = webhookErr instanceof Error ? webhookErr.message : "Unknown error";
           log(`Webhook registration warning: ${msg}`);
+        }
+
+        const functionId = process.env.SHOPIFY_FUNCTION_ID;
+        if (functionId) {
+          try {
+            await ensureAutomaticDiscount(shopify, session, functionId);
+            log(`Automatic bundle discount ensured for ${session.shop}`);
+          } catch (discountErr: unknown) {
+            const msg = discountErr instanceof Error ? discountErr.message : "Unknown error";
+            log(`Discount registration warning: ${msg}`);
+          }
         }
 
         const host = req.query.host as string;
@@ -461,6 +536,133 @@ export async function registerRoutes(
       res.json(tiers);
     } catch {
       res.status(500).json({ error: "Failed to fetch discount tiers" });
+    }
+  });
+
+  /* ── Shopify Function discount registration ───────────────────────────── */
+
+  app.get("/api/shop/discount", async (req: Request, res: Response) => {
+    const shop = (req.query.shop as string) || "";
+    if (!shopifyConfigured) {
+      res.json({ configured: false, functionIdSet: false, active: false });
+      return;
+    }
+    const functionId = process.env.SHOPIFY_FUNCTION_ID || "";
+    if (!functionId) {
+      res.json({ configured: true, functionIdSet: false, active: false });
+      return;
+    }
+    try {
+      const sessions = await sessionStorage.findSessionsByShop(shop);
+      const session = sessions.find((s) => !!s.accessToken);
+      if (!session) {
+        res.json({ configured: true, functionIdSet: true, active: false, error: "No session found" });
+        return;
+      }
+      const shopifyInstance = getShopify()!;
+      const client = new shopifyInstance.clients.Graphql({ session });
+      const result = await client.query({
+        data: {
+          query: `query {
+            automaticDiscountNodes(first: 20) {
+              nodes {
+                id
+                automaticDiscount {
+                  ... on DiscountAutomaticApp {
+                    title
+                    status
+                    appDiscountType { functionId }
+                  }
+                }
+              }
+            }
+          }`,
+        },
+      });
+      const body = result.body as Record<string, unknown>;
+      const nodes = ((body.data as Record<string, unknown>)?.automaticDiscountNodes as Record<string, unknown>)?.nodes as Array<Record<string, unknown>> ?? [];
+      const match = nodes.find((n) => {
+        const d = n.automaticDiscount as Record<string, unknown> | undefined;
+        return (d?.appDiscountType as Record<string, unknown> | undefined)?.functionId === functionId;
+      });
+      res.json({
+        configured: true,
+        functionIdSet: true,
+        active: !!match,
+        discountId: match?.id ?? null,
+        title: match ? ((match.automaticDiscount as Record<string, unknown>)?.title ?? null) : null,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  app.post("/api/shop/discount", async (req: Request, res: Response) => {
+    if (!shopifyConfigured) {
+      res.status(503).json({ error: "Shopify not configured" });
+      return;
+    }
+    const functionId = process.env.SHOPIFY_FUNCTION_ID || "";
+    if (!functionId) {
+      res.status(400).json({ error: "SHOPIFY_FUNCTION_ID env var not set. Deploy the function first with `shopify app deploy`." });
+      return;
+    }
+    const { shop } = req.body as { shop?: string };
+    if (!shop) {
+      res.status(400).json({ error: "Missing shop" });
+      return;
+    }
+    try {
+      const sessions = await sessionStorage.findSessionsByShop(shop);
+      const session = sessions.find((s) => !!s.accessToken);
+      if (!session) {
+        res.status(404).json({ error: "No session found for shop" });
+        return;
+      }
+      const shopifyInstance = getShopify()!;
+      const discountId = await ensureAutomaticDiscount(shopifyInstance, session, functionId);
+      res.json({ success: true, discountId });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  app.delete("/api/shop/discount", async (req: Request, res: Response) => {
+    if (!shopifyConfigured) {
+      res.status(503).json({ error: "Shopify not configured" });
+      return;
+    }
+    const { shop, discountId } = req.body as { shop?: string; discountId?: string };
+    if (!shop || !discountId) {
+      res.status(400).json({ error: "Missing shop or discountId" });
+      return;
+    }
+    try {
+      const sessions = await sessionStorage.findSessionsByShop(shop);
+      const session = sessions.find((s) => !!s.accessToken);
+      if (!session) {
+        res.status(404).json({ error: "No session found for shop" });
+        return;
+      }
+      const shopifyInstance = getShopify()!;
+      const client = new shopifyInstance.clients.Graphql({ session });
+      await client.query({
+        data: {
+          query: `mutation DiscountAutomaticDelete($id: ID!) {
+            discountAutomaticDelete(id: $id) {
+              deletedAutomaticDiscountId
+              userErrors { field message }
+            }
+          }`,
+          variables: { id: discountId },
+        },
+      });
+      res.json({ success: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      res.status(500).json({ error: msg });
     }
   });
 
