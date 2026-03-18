@@ -257,15 +257,16 @@ export default function AdminBundleForm() {
     []
   );
 
-  const canAdvance =
-    step === 0 ? name.trim().length > 0 :
-    step === 1 ? slots.length > 0 :
-    true;
-
   const allSlotsHaveProducts = slots.every((s) => s.products.length > 0);
   const allSlotsHaveNames = slots.every((s) => s.name.trim().length > 0);
   const allSlotQtyValid = slots.every((s) => s.maxQty == null || s.maxQty >= s.minQty);
   const tierQtysUnique = new Set(tiers.map((t) => t.minQty)).size === tiers.length;
+
+  const canAdvance =
+    step === 0 ? name.trim().length > 0 :
+    step === 1 ? slots.length > 0 && allSlotsHaveNames && allSlotsHaveProducts && allSlotQtyValid :
+    true;
+
   const canSave =
     name.trim().length > 0 &&
     slots.length > 0 &&
