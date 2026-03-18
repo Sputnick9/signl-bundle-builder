@@ -44,9 +44,7 @@ export default function BillingPage() {
   const billingResult = params.get("billing");
 
   const { data: status, isLoading } = useQuery<BillingStatus>({
-    queryKey: ["/api/billing/status", shop],
-    queryFn: () =>
-      fetch(`/api/billing/status?shop=${encodeURIComponent(shop)}`).then((r) => r.json()),
+    queryKey: [`/api/billing/status?shop=${encodeURIComponent(shop)}`],
     enabled: !!shop,
     retry: false,
   });

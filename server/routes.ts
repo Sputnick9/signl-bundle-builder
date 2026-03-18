@@ -166,24 +166,28 @@ function makeRequireActiveSubscription() {
       return;
     }
     try {
-      const localStatus = await getSubscriptionStatus(shop);
-      if (localStatus.hasSubscription) {
-        next();
-        return;
-      }
-      if (localStatus.chargeId) {
-        const sessions = await sessionStorage.findSessionsByShop(shop);
-        const session = sessions.find((s) => !!s.accessToken);
-        if (session) {
-          try {
-            const isLive = await checkSubscriptionLive(shopify, session);
-            if (isLive) {
-              next();
-              return;
-            }
-          } catch (liveErr) {
-            log(`Billing live check warning for ${shop}: ${liveErr instanceof Error ? liveErr.message : String(liveErr)}`);
+      const sessions = await sessionStorage.findSessionsByShop(shop);
+      const session = sessions.find((s) => !!s.accessToken);
+      if (session) {
+        try {
+          const isLive = await checkSubscriptionLive(shopify, session);
+          if (isLive) {
+            next();
+            return;
           }
+        } catch (liveErr) {
+          log(`Billing live check for ${shop} failed, falling back to DB: ${liveErr instanceof Error ? liveErr.message : String(liveErr)}`);
+          const localStatus = await getSubscriptionStatus(shop);
+          if (localStatus.hasSubscription) {
+            next();
+            return;
+          }
+        }
+      } else {
+        const localStatus = await getSubscriptionStatus(shop);
+        if (localStatus.hasSubscription) {
+          next();
+          return;
         }
       }
       res.status(402).json({
@@ -917,10 +921,27 @@ export async function registerRoutes(
       }
 
       if (!chargeId) {
-        const redirectUrl = host
-          ? `/billing?shop=${shop}&host=${host}&billing=declined`
-          : `/billing?shop=${shop}&billing=declined`;
-        res.redirect(redirectUrl);
+        let exitUrl: string;
+        if (host) {
+          try {
+            const decoded = Buffer.from(host, "base64").toString("utf8");
+            exitUrl = decoded.startsWith("https://")
+              ? decoded
+              : `https://${shop}/admin/apps`;
+          } catch {
+            exitUrl = `https://${shop}/admin/apps`;
+          }
+        } else {
+          exitUrl = `https://${shop}/admin/apps`;
+        }
+        res.send(
+          `<!DOCTYPE html><html><head><title>Subscription Declined</title>` +
+          `<script>` +
+          `var msg=document.createElement("p");msg.textContent="Subscription declined. Redirecting to Shopify admin...";document.body.appendChild(msg);` +
+          `if(window.top===window.self){window.location.href=${JSON.stringify(exitUrl)};}` +
+          `else{window.top.location.href=${JSON.stringify(exitUrl)};}` +
+          `</script></head><body></body></html>`
+        );
         return;
       }
 
@@ -940,18 +961,52 @@ export async function registerRoutes(
             : `/?shop=${shop}`;
           res.redirect(redirectUrl);
         } else {
-          const redirectUrl = host
-            ? `/billing?shop=${shop}&host=${host}&billing=${status}`
-            : `/billing?shop=${shop}&billing=${status}`;
-          res.redirect(redirectUrl);
+          let exitUrl: string;
+          if (host) {
+            try {
+              const decoded = Buffer.from(host, "base64").toString("utf8");
+              exitUrl = decoded.startsWith("https://")
+                ? decoded
+                : `https://${shop}/admin/apps`;
+            } catch {
+              exitUrl = `https://${shop}/admin/apps`;
+            }
+          } else {
+            exitUrl = `https://${shop}/admin/apps`;
+          }
+          res.send(
+            `<!DOCTYPE html><html><head><title>Subscription Not Approved</title>` +
+            `<script>` +
+            `var msg=document.createElement("p");msg.textContent="Subscription not approved (${status}). Redirecting to Shopify admin...";document.body.appendChild(msg);` +
+            `if(window.top===window.self){window.location.href=${JSON.stringify(exitUrl)};}` +
+            `else{window.top.location.href=${JSON.stringify(exitUrl)};}` +
+            `</script></head><body></body></html>`
+          );
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Unknown error";
         log(`Billing return error: ${msg}`);
-        const redirectUrl = host
-          ? `/billing?shop=${shop}&host=${host}&billing=error`
-          : `/billing?shop=${shop}&billing=error`;
-        res.redirect(redirectUrl);
+        let exitUrl: string;
+        if (host) {
+          try {
+            const decoded = Buffer.from(host, "base64").toString("utf8");
+            exitUrl = decoded.startsWith("https://")
+              ? decoded
+              : `https://${shop}/admin/apps`;
+          } catch {
+            exitUrl = `https://${shop}/admin/apps`;
+          }
+        } else {
+          exitUrl = `https://${shop}/admin/apps`;
+        }
+        res.send(
+          `<!DOCTYPE html><html><head><title>Billing Error</title>` +
+          `<script>` +
+          `var msg=document.createElement("p");msg.textContent="Billing error. Redirecting to Shopify admin...";document.body.appendChild(msg);` +
+          `if(window.top===window.self){window.location.href=${JSON.stringify(exitUrl)};}` +
+          `else{window.top.location.href=${JSON.stringify(exitUrl)};}` +
+          `</script></head><body></body></html>`
+        );
       }
     });
   } else {

@@ -114,9 +114,7 @@ function BillingCard({ shop, host }: { shop: string; host: string }) {
   const [, navigate] = useLocation();
 
   const { data: billing, isLoading } = useQuery<BillingStatusData>({
-    queryKey: ["/api/billing/status", shop],
-    queryFn: () =>
-      fetch(`/api/billing/status?shop=${encodeURIComponent(shop)}`).then((r) => r.json()),
+    queryKey: [`/api/billing/status?shop=${encodeURIComponent(shop)}`],
     enabled: !!shop,
   });
 
