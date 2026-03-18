@@ -386,12 +386,12 @@ export async function registerRoutes(
 
       const slotSeeds: SlotSeed[] | undefined = slots?.map((s) => ({
         name: s.name,
-        minQty: s.minQty ?? 1,
+        minQty: s.minQty,
         maxQty: s.maxQty ?? null,
-        products: (s.products ?? []).map((p) => ({
-          shopifyProductId: p.shopifyProductId ?? "",
+        products: s.products.map((p) => ({
+          shopifyProductId: p.shopifyProductId,
           shopifyVariantId: p.shopifyVariantId ?? null,
-          productTitle: p.productTitle ?? "",
+          productTitle: p.productTitle,
           variantTitle: p.variantTitle ?? null,
           productImage: p.productImage ?? null,
         })),

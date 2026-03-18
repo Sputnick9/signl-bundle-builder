@@ -264,7 +264,16 @@ export default function AdminBundleForm() {
 
   const allSlotsHaveProducts = slots.every((s) => s.products.length > 0);
   const allSlotsHaveNames = slots.every((s) => s.name.trim().length > 0);
-  const canSave = name.trim().length > 0 && slots.length > 0 && allSlotsHaveNames && allSlotsHaveProducts && tiers.length > 0;
+  const allSlotQtyValid = slots.every((s) => s.maxQty == null || s.maxQty >= s.minQty);
+  const tierQtysUnique = new Set(tiers.map((t) => t.minQty)).size === tiers.length;
+  const canSave =
+    name.trim().length > 0 &&
+    slots.length > 0 &&
+    allSlotsHaveNames &&
+    allSlotsHaveProducts &&
+    allSlotQtyValid &&
+    tiers.length > 0 &&
+    tierQtysUnique;
 
   if (loadingBundle) {
     return (
