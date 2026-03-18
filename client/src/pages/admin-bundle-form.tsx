@@ -262,7 +262,8 @@ export default function AdminBundleForm() {
     step === 1 ? slots.length > 0 :
     true;
 
-  const canSave = name.trim().length > 0 && slots.length > 0 && tiers.length > 0;
+  const allSlotsHaveProducts = slots.every((s) => s.products.length > 0);
+  const canSave = name.trim().length > 0 && slots.length > 0 && allSlotsHaveProducts && tiers.length > 0;
 
   if (loadingBundle) {
     return (

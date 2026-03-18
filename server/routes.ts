@@ -29,20 +29,28 @@ const bundleSlotSchema = z.object({
   name: z.string().min(1),
   minQty: z.number().int().min(1).default(1),
   maxQty: z.number().int().min(1).nullable().optional(),
-  products: z.array(slotProductSchema).default([]),
+  products: z.array(slotProductSchema).min(1, "Each slot must have at least one product"),
 }).refine(
   (s) => s.maxQty == null || s.maxQty >= s.minQty,
   { message: "maxQty must be greater than or equal to minQty", path: ["maxQty"] }
 );
+
+const tierItemSchema = z.object({
+  minQty: z.number().int().min(1),
+  discountValue: z.number().min(0),
+});
 
 const bundleBodySchema = z.object({
   shop: z.string().optional(),
   name: z.string().min(1),
   description: z.string().nullable().optional(),
   discountType: z.enum(["percentage", "fixed"]).default("percentage"),
-  discountTiers: z.array(
-    z.object({ minQty: z.number().int().min(1), discountValue: z.number().min(0) })
-  ).min(1, "At least one discount tier is required"),
+  discountTiers: z.array(tierItemSchema)
+    .min(1, "At least one discount tier is required")
+    .refine(
+      (tiers) => new Set(tiers.map((t) => t.minQty)).size === tiers.length,
+      { message: "Discount tier quantities must be unique" }
+    ),
   status: z.enum(["draft", "active", "archived"]).default("draft"),
   slots: z.array(bundleSlotSchema).min(1, "At least one product slot is required"),
 });
