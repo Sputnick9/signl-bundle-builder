@@ -63,6 +63,11 @@ const emptyProduct = (): SlotProduct => ({
   productImage: "",
 });
 
+const isResourcePickerAvailable = (): boolean => {
+  const w = window as unknown as { shopify?: { resourcePicker?: unknown } };
+  return typeof w.shopify?.resourcePicker === "function";
+};
+
 export default function AdminBundleForm() {
   const [, navigate] = useLocation();
   const [matchNew] = useRoute("/admin/bundles/new");
@@ -71,6 +76,7 @@ export default function AdminBundleForm() {
   const bundleId = matchEdit ? parseInt(params!.id) : null;
 
   const [step, setStep] = useState<StepIndex>(0);
+  const pickerAvailable = isResourcePickerAvailable();
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -372,6 +378,15 @@ export default function AdminBundleForm() {
 
           {step === 1 && (
             <BlockStack gap="400">
+              {!pickerAvailable && (
+                <Banner tone="info">
+                  <Text as="p">
+                    Product browsing is available when this app is open inside Shopify Admin.
+                    Use <strong>Add manually</strong> to enter product titles and IDs while developing,
+                    or open the app embedded to use the Shopify product picker.
+                  </Text>
+                </Banner>
+              )}
               <Card>
                 <BlockStack gap="400">
                   <InlineStack align="space-between">

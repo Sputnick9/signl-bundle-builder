@@ -8,13 +8,14 @@ import {
   Button,
   InlineStack,
   useIndexResourceState,
-  ButtonGroup,
+  Modal,
 } from "@shopify/polaris";
-import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
+import { TitleBar } from "@shopify/app-bridge-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
+import { useState, useCallback } from "react";
 import type { Bundle } from "@shared/schema";
 
 function statusBadge(status: string) {
@@ -33,6 +34,7 @@ function formatDate(d: string | Date) {
 
 export default function AdminBundles() {
   const [, navigate] = useLocation();
+  const [deleteTarget, setDeleteTarget] = useState<Bundle | null>(null);
 
   const { data: bundles = [], isLoading } = useQuery<Bundle[]>({
     queryKey: ["/api/bundles"],
@@ -43,8 +45,23 @@ export default function AdminBundles() {
       apiRequest("DELETE", `/api/bundles/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bundles"] });
+      setDeleteTarget(null);
     },
   });
+
+  const confirmDelete = useCallback((bundle: Bundle) => {
+    setDeleteTarget(bundle);
+  }, []);
+
+  const handleConfirmDelete = useCallback(() => {
+    if (deleteTarget) {
+      deleteMutation.mutate(deleteTarget.id);
+    }
+  }, [deleteTarget, deleteMutation]);
+
+  const handleCancelDelete = useCallback(() => {
+    setDeleteTarget(null);
+  }, []);
 
   const resourceName = { singular: "bundle", plural: "bundles" };
   const { selectedResources, allResourcesSelected, handleSelectionChange } =
@@ -88,8 +105,7 @@ export default function AdminBundles() {
           <Button
             size="slim"
             tone="critical"
-            loading={deleteMutation.isPending}
-            onClick={() => deleteMutation.mutate(bundle.id)}
+            onClick={() => confirmDelete(bundle)}
             data-testid={`button-delete-bundle-${bundle.id}`}
           >
             Delete
@@ -111,6 +127,35 @@ export default function AdminBundles() {
             Create bundle
           </button>
         </TitleBar>
+
+        <Modal
+          open={deleteTarget !== null}
+          onClose={handleCancelDelete}
+          title="Delete bundle?"
+          primaryAction={{
+            content: "Delete",
+            destructive: true,
+            loading: deleteMutation.isPending,
+            onAction: handleConfirmDelete,
+          }}
+          secondaryActions={[
+            {
+              content: "Cancel",
+              onAction: handleCancelDelete,
+            },
+          ]}
+        >
+          <Modal.Section>
+            <Text as="p">
+              Are you sure you want to delete{" "}
+              <Text as="span" fontWeight="bold">
+                {deleteTarget?.name}
+              </Text>
+              ? This will permanently remove the bundle and all its slot
+              configuration. This action cannot be undone.
+            </Text>
+          </Modal.Section>
+        </Modal>
 
         {!isLoading && bundles.length === 0 ? (
           <EmptyState
