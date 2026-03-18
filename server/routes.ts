@@ -220,7 +220,8 @@ export async function registerRoutes(
     });
 
     app.get("/api/auth/status", async (req: Request, res: Response) => {
-      const shop = req.query.shop as string;
+      const rawShop = req.query.shop as string | undefined;
+      const shop = rawShop ? (shopify.utils.sanitizeShop(rawShop, true) ?? null) : null;
       if (!shop) {
         res.json({ configured: true, authenticated: false });
         return;
