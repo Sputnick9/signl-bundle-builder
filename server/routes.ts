@@ -115,6 +115,20 @@ function makeShopifyAuthMiddleware() {
   };
 }
 
+function resolveShop(
+  req: AuthenticatedRequest,
+  fromBody?: string
+): string | undefined {
+  const token = req.shopifyShop;
+  if (token) return token;
+  const query = req.query.shop as string | undefined;
+  const candidate = fromBody || query;
+  if (shopifyConfigured) {
+    return candidate;
+  }
+  return candidate || "dev-preview";
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -258,7 +272,11 @@ export async function registerRoutes(
 
   app.get("/api/bundles", shopifyAuth, async (req: Request, res: Response) => {
     const authedReq = req as AuthenticatedRequest;
-    const shop = authedReq.shopifyShop || (req.query.shop as string) || "dev-preview";
+    const shop = resolveShop(authedReq);
+    if (!shop) {
+      res.status(401).json({ error: "Unauthorized: missing shop context" });
+      return;
+    }
     try {
       const result = await listBundles(shop);
       res.json(result);
@@ -276,7 +294,11 @@ export async function registerRoutes(
       return;
     }
     const authedReq = req as AuthenticatedRequest;
-    const shop = authedReq.shopifyShop || (req.query.shop as string) || "dev-preview";
+    const shop = resolveShop(authedReq);
+    if (!shop) {
+      res.status(401).json({ error: "Unauthorized: missing shop context" });
+      return;
+    }
     try {
       const bundle = await getBundle(id, shop);
       if (!bundle) {
@@ -299,7 +321,11 @@ export async function registerRoutes(
     }
     const { slots, ...rawBundle } = parsed.data;
     const authedReq = req as AuthenticatedRequest;
-    const canonicalShop = authedReq.shopifyShop || rawBundle.shop || "dev-preview";
+    const canonicalShop = resolveShop(authedReq, rawBundle.shop);
+    if (!canonicalShop) {
+      res.status(401).json({ error: "Unauthorized: missing shop context" });
+      return;
+    }
     try {
       const bundleInsert = toBundleInsert({ ...rawBundle, shop: canonicalShop });
       const slotSeeds: SlotSeed[] = slots.map((s) => ({
@@ -336,7 +362,11 @@ export async function registerRoutes(
     }
     const { slots, shop: _clientShop, ...rawBundle } = parsed.data;
     const authedReq = req as AuthenticatedRequest;
-    const canonicalShop = authedReq.shopifyShop || _clientShop || "dev-preview";
+    const canonicalShop = resolveShop(authedReq, _clientShop);
+    if (!canonicalShop) {
+      res.status(401).json({ error: "Unauthorized: missing shop context" });
+      return;
+    }
     try {
       const updateData: Partial<Omit<typeof bundles.$inferInsert, "id" | "shop">> = {
         ...(rawBundle.name !== undefined && { name: rawBundle.name }),
@@ -379,7 +409,11 @@ export async function registerRoutes(
       return;
     }
     const authedReq = req as AuthenticatedRequest;
-    const shop = authedReq.shopifyShop || (req.query.shop as string) || "dev-preview";
+    const shop = resolveShop(authedReq);
+    if (!shop) {
+      res.status(401).json({ error: "Unauthorized: missing shop context" });
+      return;
+    }
     try {
       const deleted = await deleteBundle(id, shop);
       if (!deleted) {
