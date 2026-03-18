@@ -4,8 +4,16 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { storage } from "./storage";
 import { addToCartSchema, bundles } from "@shared/schema";
 import type { DiscountTierRule } from "@shared/schema";
-import { getShopify, shopifyConfigured, sessionStorage } from "./shopify";
+import { getShopify, shopifyConfigured, sessionStorage, getAppUrl } from "./shopify";
 import { log } from "./index";
+import {
+  getSubscriptionStatus,
+  createAppSubscription,
+  verifyAppSubscription,
+  PLAN_NAME,
+  PLAN_PRICE,
+  TRIAL_DAYS,
+} from "./billing";
 import {
   listBundles,
   getBundle,
@@ -264,10 +272,18 @@ export async function registerRoutes(
         }
 
         const host = req.query.host as string;
-        const redirectUrl = host
-          ? `/?shop=${session.shop}&host=${host}`
-          : `/?shop=${session.shop}`;
-        res.redirect(redirectUrl);
+        const billingSub = await getSubscriptionStatus(session.shop);
+        if (!billingSub.hasSubscription) {
+          const billingRedirect = host
+            ? `/billing?shop=${session.shop}&host=${host}`
+            : `/billing?shop=${session.shop}`;
+          res.redirect(billingRedirect);
+        } else {
+          const redirectUrl = host
+            ? `/?shop=${session.shop}&host=${host}`
+            : `/?shop=${session.shop}`;
+          res.redirect(redirectUrl);
+        }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Unknown error";
         log(`OAuth callback error: ${msg}`);
@@ -789,6 +805,104 @@ export async function registerRoutes(
       res.status(400).json({ error: msg });
     }
   });
+
+  app.get("/api/billing/status", shopifyAuth, async (req: Request, res: Response) => {
+    const authedReq = req as AuthenticatedRequest;
+    const shop = resolveShop(authedReq);
+    if (!shop) {
+      res.status(401).json({ error: "Unauthorized: missing shop context" });
+      return;
+    }
+    try {
+      const status = await getSubscriptionStatus(shop);
+      res.json({
+        ...status,
+        planName: PLAN_NAME,
+        planPrice: PLAN_PRICE,
+        trialDays: TRIAL_DAYS,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      log(`Billing status error: ${msg}`);
+      res.status(500).json({ error: "Failed to get billing status" });
+    }
+  });
+
+  if (shopify && shopifyConfigured) {
+    app.post("/api/billing/subscribe", shopifyAuth, async (req: Request, res: Response) => {
+      const authedReq = req as AuthenticatedRequest;
+      const shop = resolveShop(authedReq);
+      if (!shop) {
+        res.status(401).json({ error: "Unauthorized: missing shop context" });
+        return;
+      }
+      try {
+        const sessions = await sessionStorage.findSessionsByShop(shop);
+        const session = sessions.find((s) => !!s.accessToken);
+        if (!session) {
+          res.status(401).json({ error: "No active session for shop" });
+          return;
+        }
+        const host = (req.query.host as string) || "";
+        const returnUrl = `${getAppUrl()}/billing/return?shop=${encodeURIComponent(shop)}&host=${encodeURIComponent(host)}`;
+        const confirmationUrl = await createAppSubscription(shopify, session, returnUrl);
+        res.json({ confirmationUrl });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        log(`Billing subscribe error: ${msg}`);
+        res.status(500).json({ error: `Failed to create subscription: ${msg}` });
+      }
+    });
+
+    app.get("/billing/return", async (req: Request, res: Response) => {
+      const shop = req.query.shop as string | undefined;
+      const host = req.query.host as string | undefined;
+      const chargeId = req.query.charge_id as string | undefined;
+
+      if (!shop) {
+        res.status(400).send("Missing shop parameter");
+        return;
+      }
+
+      if (!chargeId) {
+        const redirectUrl = host
+          ? `/?shop=${shop}&host=${host}&billing=declined`
+          : `/?shop=${shop}&billing=declined`;
+        res.redirect(redirectUrl);
+        return;
+      }
+
+      try {
+        const sessions = await sessionStorage.findSessionsByShop(shop);
+        const session = sessions.find((s) => !!s.accessToken);
+        if (!session) {
+          res.status(401).send("No active session for shop");
+          return;
+        }
+        const status = await verifyAppSubscription(shopify, session, chargeId);
+        log(`Billing return for ${shop}: charge ${chargeId} status=${status}`);
+
+        const redirectUrl = host
+          ? `/?shop=${shop}&host=${host}&billing=${status}`
+          : `/?shop=${shop}&billing=${status}`;
+        res.redirect(redirectUrl);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        log(`Billing return error: ${msg}`);
+        const redirectUrl = host
+          ? `/?shop=${shop}&host=${host}&billing=error`
+          : `/?shop=${shop}&billing=error`;
+        res.redirect(redirectUrl);
+      }
+    });
+  } else {
+    app.post("/api/billing/subscribe", async (_req: Request, res: Response) => {
+      res.json({
+        confirmationUrl: null,
+        message: "Billing not configured — Shopify credentials required",
+      });
+    });
+  }
 
   return httpServer;
 }

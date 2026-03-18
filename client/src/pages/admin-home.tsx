@@ -65,7 +65,7 @@ function RoadmapCard() {
     { label: "Bundle Admin UI (Polaris)", done: true },
     { label: "Theme App Extension (Storefront)", done: true },
     { label: "Shopify Functions (Real Discounts)", done: true },
-    { label: "Billing & Subscriptions", done: false },
+    { label: "Billing & Subscriptions", done: true },
   ];
 
   return (
@@ -95,6 +95,74 @@ function RoadmapCard() {
               </Text>
             </InlineStack>
           ))}
+        </BlockStack>
+      </BlockStack>
+    </Card>
+  );
+}
+
+interface BillingStatusData {
+  hasSubscription: boolean;
+  status: string;
+  chargeId?: string | null;
+  planName?: string;
+  planPrice?: string;
+  trialDays?: number;
+}
+
+function BillingCard({ shop, host }: { shop: string; host: string }) {
+  const [, navigate] = useLocation();
+
+  const { data: billing, isLoading } = useQuery<BillingStatusData>({
+    queryKey: ["/api/billing/status", shop],
+    queryFn: () =>
+      fetch(`/api/billing/status?shop=${encodeURIComponent(shop)}`).then((r) => r.json()),
+    enabled: !!shop,
+  });
+
+  const isActive = billing?.hasSubscription && billing.status === "active";
+  const isPending = billing?.status === "pending";
+
+  return (
+    <Card>
+      <BlockStack gap="400">
+        <InlineStack align="space-between" blockAlign="center">
+          <Text as="h2" variant="headingMd">Subscription</Text>
+          {isLoading ? (
+            <Spinner size="small" />
+          ) : isActive ? (
+            <Badge tone="success" data-testid="badge-billing-active">Active</Badge>
+          ) : isPending ? (
+            <Badge tone="attention" data-testid="badge-billing-pending">Pending</Badge>
+          ) : (
+            <Badge tone="warning" data-testid="badge-billing-inactive">Inactive</Badge>
+          )}
+        </InlineStack>
+        <Divider />
+        <BlockStack gap="200">
+          {isActive || isPending ? (
+            <>
+              <Text as="p" tone="subdued">
+                {billing?.planName ?? "Standard"} — ${billing?.planPrice ?? "19.99"}/month
+              </Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                Manage or cancel your subscription anytime through your Shopify admin.
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text as="p" tone="subdued">
+                No active subscription. Subscribe to enable all bundle builder features.
+              </Text>
+              <Button
+                variant="primary"
+                onClick={() => navigate(host ? `/billing?shop=${shop}&host=${host}` : `/billing?shop=${shop}`)}
+                data-testid="button-subscribe"
+              >
+                View Pricing & Subscribe
+              </Button>
+            </>
+          )}
         </BlockStack>
       </BlockStack>
     </Card>
@@ -210,7 +278,9 @@ function DiscountFunctionCard({ shop }: { shop: string }) {
 export default function AdminHome() {
   const [, navigate] = useLocation();
 
-  const shopParam = new URLSearchParams(window.location.search).get("shop") ?? "";
+  const urlParams = new URLSearchParams(window.location.search);
+  const shopParam = urlParams.get("shop") ?? "";
+  const hostParam = urlParams.get("host") ?? "";
   const authStatusUrl = shopParam
     ? `/api/auth/status?shop=${encodeURIComponent(shopParam)}`
     : "/api/auth/status";
@@ -284,6 +354,8 @@ export default function AdminHome() {
               </BlockStack>
             </Card>
           </InlineGrid>
+
+          <BillingCard shop={shopParam} host={hostParam} />
 
           <DiscountFunctionCard shop={shopParam} />
 

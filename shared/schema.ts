@@ -119,6 +119,23 @@ export interface CartBundle {
   total: number;
 }
 
+export const shopSubscriptions = pgTable("shop_subscriptions", {
+  id: serial("id").primaryKey(),
+  shop: text("shop").notNull().unique(),
+  chargeId: text("charge_id"),
+  status: text("status").notNull().default("pending"),
+  trialDays: integer("trial_days").notNull().default(7),
+  planName: text("plan_name").notNull().default("Standard"),
+  planPrice: text("plan_price").notNull().default("19.99"),
+  activatedAt: timestamp("activated_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type ShopSubscription = typeof shopSubscriptions.$inferSelect;
+export type InsertShopSubscription = typeof shopSubscriptions.$inferInsert;
+
 export const addToCartSchema = z.object({
   items: z.array(
     z.object({

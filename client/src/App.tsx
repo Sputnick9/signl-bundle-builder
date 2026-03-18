@@ -7,12 +7,14 @@ import AdminHome from "@/pages/admin-home";
 import AdminBundles from "@/pages/admin-bundles";
 import AdminBundleForm from "@/pages/admin-bundle-form";
 import BundleBuilder from "@/pages/bundle-builder";
+import BillingPage from "@/pages/billing";
 import NotFound from "@/pages/not-found";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={AdminHome} />
+      <Route path="/billing" component={BillingPage} />
       <Route path="/admin/bundles/new" component={AdminBundleForm} />
       <Route path="/admin/bundles/:id" component={AdminBundleForm} />
       <Route path="/admin/bundles" component={AdminBundles} />

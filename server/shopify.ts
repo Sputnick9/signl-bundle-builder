@@ -158,3 +158,5 @@ export function getShopify() {
 }
 
 export { getAppUrl };
+
+export type GetShopifyReturn = ReturnType<typeof shopifyApi>;

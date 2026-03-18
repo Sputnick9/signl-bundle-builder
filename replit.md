@@ -39,7 +39,15 @@ A full Shopify embedded app that allows merchants to create and manage product b
    - `GET/POST/DELETE /api/shop/discount` — manage discount registration per shop
    - Auto-registers discount in OAuth callback when `SHOPIFY_FUNCTION_ID` env var is set
    - Admin home: `DiscountFunctionCard` shows active/inactive status; Register/Deactivate buttons; "How it works" explainer
-5. **Task 5 — Billing & Subscriptions** ⏳ Pending
+5. **Task 5 — Billing & Subscriptions** ✅ COMPLETE
+   - `server/billing.ts` — Shopify Billing API: `createAppSubscription()`, `verifyAppSubscription()`, `getSubscriptionStatus()`, `upsertSubscription()`
+   - `shared/schema.ts`: `shop_subscriptions` table (shop, chargeId, status, trialDays, planName, planPrice, activatedAt, cancelledAt)
+   - `GET /api/billing/status` — returns hasSubscription, status, plan details (shopifyAuth middleware)
+   - `POST /api/billing/subscribe` — calls `appSubscriptionCreate` GQL mutation; returns confirmationUrl for redirect
+   - `GET /billing/return` — Shopify redirect-back URL; verifies charge via `node` GQL query; redirects with status param
+   - OAuth callback now checks subscription status and redirects new installs to `/billing` if no active subscription
+   - `client/src/pages/billing.tsx` — Polaris pricing page: plan card ($19.99/month, 7-day trial), feature list, FAQ, subscription confirmation states
+   - `client/src/pages/admin-home.tsx` — `BillingCard` component shows subscription status badge + subscribe/manage CTA
 
 ## Database Schema
 
@@ -81,6 +89,20 @@ Individual product/variant options within a slot.
 | productTitle | text | Display name |
 | variantTitle | text | Variant label (optional) |
 | productImage | text | Image URL (optional) |
+
+### `shop_subscriptions`
+Tracks Shopify Billing API subscription status per shop.
+| Column | Type | Description |
+|---|---|---|
+| id | serial PK | |
+| shop | text UNIQUE | myshopify domain |
+| chargeId | text | Shopify subscription GID (`gid://shopify/AppSubscription/...`) |
+| status | text | `pending`, `active`, `declined`, `cancelled`, `expired`, `frozen` |
+| trialDays | integer | Free trial days (default: 7) |
+| planName | text | Plan display name |
+| planPrice | text | Monthly price string (default: `19.99`) |
+| activatedAt | timestamp | When subscription became active |
+| cancelledAt | timestamp | When subscription was cancelled |
 
 ## Required Environment Variables
 Set these in Replit Secrets before enabling Shopify OAuth:
