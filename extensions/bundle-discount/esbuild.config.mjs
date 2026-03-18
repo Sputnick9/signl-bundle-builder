@@ -7,7 +7,7 @@ import * as esbuild from "esbuild";
 // Javy WASM runtime entry point — wraps the exported `run` function with
 // stdin/stdout I/O that the Shopify Functions runtime expects.
 const entryContent = `
-import { run } from "./src/run.js";
+import { run } from "./src/index.js";
 const inputData = JSON.parse(Shopify.readAllStdin());
 const output = run(inputData);
 Shopify.writeAllStdout(JSON.stringify(output));

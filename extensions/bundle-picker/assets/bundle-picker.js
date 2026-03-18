@@ -476,9 +476,10 @@
     var slotSels = this.selections[bundle.id] || {};
     var items = [];
 
+    var discountActive = bundle.discountEnabled !== false;
     var bundleProps = {
       "_bundleId": String(bundle.id),
-      "_discountTiers": JSON.stringify(bundle.discountTiers || []),
+      "_discountTiers": discountActive ? JSON.stringify(bundle.discountTiers || []) : "[]",
       "_discountType": bundle.discountType || "percentage",
     };
 

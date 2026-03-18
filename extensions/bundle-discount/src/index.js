@@ -1,15 +1,16 @@
 // @ts-check
-// SiGNL Bundle Discount — Shopify Function (product_discounts)
+// SiGNL Bundle Discount — Shopify Function (product_discounts, api_version 2024-04)
 //
-// Reads cart line attributes set by the bundle picker:
+// Reads cart line attributes set by the bundle picker storefront JS:
 //   _bundleId        — numeric bundle ID (groups lines belonging to the same bundle)
 //   _discountTiers   — JSON array of { minQty, discountValue } objects
 //   _discountType    — "percentage" | "fixed"
 //
-// For each bundle group found in the cart the function selects the best
-// discount tier (highest minQty whose threshold is met) and returns a
-// product-variant-level discount targeting every line in the group.
-// No network calls are made — all data comes from cart line attributes.
+// For each bundle group the function selects the best tier (highest minQty that the
+// total qty meets) and returns a cartLine-level discount targeting each specific
+// cart line ID in the group. Using cartLine targets avoids over-applying the
+// discount when the same product variant appears both in a bundle and as a
+// standalone cart item. Lines without _bundleId are never targeted.
 
 const EMPTY = { discounts: [], discountApplicationStrategy: "FIRST" };
 
@@ -66,8 +67,10 @@ export function run(input) {
 
     if (!tier) continue;
 
+    // Target specific cart lines (not product variants) to avoid accidentally
+    // discounting same-variant items that were added to the cart independently.
     const targets = group.lines.map(line => ({
-      productVariant: { id: line.merchandise.id },
+      cartLine: { id: line.id },
     }));
 
     if (discountType === "percentage") {

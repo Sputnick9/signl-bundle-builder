@@ -9,4 +9,4 @@ function_type = "product_discounts"
 [extensions.build]
 command = "npm run build"
 path = "dist/index.wasm"
-watch_paths = ["src/**/*.js"]
+watch_paths = ["src/index.js"]

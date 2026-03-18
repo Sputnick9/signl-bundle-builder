@@ -28,6 +28,7 @@ export const bundles = pgTable("bundles", {
   description: text("description"),
   discountType: text("discount_type").notNull().default("percentage"),
   discountTiers: jsonb("discount_tiers").notNull().$type<DiscountTierRule[]>().default([]),
+  discountEnabled: boolean("discount_enabled").notNull().default(true),
   status: text("status").notNull().default("draft"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

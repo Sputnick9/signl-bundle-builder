@@ -49,6 +49,14 @@ export default function AdminBundles() {
     },
   });
 
+  const toggleDiscountMutation = useMutation({
+    mutationFn: ({ id, discountEnabled }: { id: number; discountEnabled: boolean }) =>
+      apiRequest("PUT", `/api/bundles/${id}`, { discountEnabled }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bundles"] });
+    },
+  });
+
   const confirmDelete = useCallback((bundle: Bundle) => {
     setDeleteTarget(bundle);
   }, []);
@@ -92,6 +100,22 @@ export default function AdminBundles() {
         <Text as="span" tone="subdued">
           {formatDate(bundle.createdAt)}
         </Text>
+      </IndexTable.Cell>
+      <IndexTable.Cell>
+        <Button
+          size="slim"
+          pressed={bundle.discountEnabled !== false}
+          onClick={() =>
+            toggleDiscountMutation.mutate({
+              id: bundle.id,
+              discountEnabled: bundle.discountEnabled === false,
+            })
+          }
+          loading={toggleDiscountMutation.isPending}
+          data-testid={`button-toggle-discount-${bundle.id}`}
+        >
+          {bundle.discountEnabled !== false ? "Discount On" : "Discount Off"}
+        </Button>
       </IndexTable.Cell>
       <IndexTable.Cell>
         <InlineStack gap="200">
@@ -185,6 +209,7 @@ export default function AdminBundles() {
               { title: "Status" },
               { title: "Discount type" },
               { title: "Created" },
+              { title: "Discount" },
               { title: "Actions" },
             ]}
           >

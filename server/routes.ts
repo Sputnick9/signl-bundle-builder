@@ -52,6 +52,7 @@ const bundleBodySchema = z.object({
       (tiers) => new Set(tiers.map((t) => t.minQty)).size === tiers.length,
       { message: "Discount tier quantities must be unique" }
     ),
+  discountEnabled: z.boolean().optional().default(true),
   status: z.enum(["draft", "active", "archived"]).default("draft"),
   slots: z.array(bundleSlotSchema).min(1, "At least one product slot is required"),
 });
@@ -457,6 +458,7 @@ export async function registerRoutes(
         ...(rawBundle.description !== undefined && { description: rawBundle.description }),
         ...(rawBundle.discountType !== undefined && { discountType: rawBundle.discountType }),
         ...(rawBundle.discountTiers !== undefined && { discountTiers: rawBundle.discountTiers as DiscountTierRule[] }),
+        ...(rawBundle.discountEnabled !== undefined && { discountEnabled: rawBundle.discountEnabled }),
         ...(rawBundle.status !== undefined && { status: rawBundle.status }),
       };
 
