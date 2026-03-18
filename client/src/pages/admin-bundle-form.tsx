@@ -257,7 +257,12 @@ export default function AdminBundleForm() {
     []
   );
 
-  const canAdvance = step === 0 ? name.trim().length > 0 : true;
+  const canAdvance =
+    step === 0 ? name.trim().length > 0 :
+    step === 1 ? slots.length > 0 :
+    true;
+
+  const canSave = name.trim().length > 0 && slots.length > 0 && tiers.length > 0;
 
   if (loadingBundle) {
     return (
@@ -403,9 +408,14 @@ export default function AdminBundleForm() {
                   <Divider />
                   {slots.length === 0 && (
                     <Box padding="400">
-                      <Text as="p" tone="subdued" alignment="center">
-                        No slots yet. Add a slot to define which products customers can choose from.
-                      </Text>
+                      <BlockStack gap="100" inlineAlign="center">
+                        <Text as="p" tone="subdued" alignment="center">
+                          No slots yet. Add a slot to define which products customers can choose from.
+                        </Text>
+                        <Text as="p" tone="caution" alignment="center">
+                          At least one slot is required to continue.
+                        </Text>
+                      </BlockStack>
                     </Box>
                   )}
                 </BlockStack>
@@ -647,7 +657,7 @@ export default function AdminBundleForm() {
               <Button
                 variant="primary"
                 loading={saveMutation.isPending}
-                disabled={!name.trim()}
+                disabled={!canSave}
                 onClick={() => saveMutation.mutate()}
                 data-testid="button-save-bundle"
               >

@@ -42,9 +42,9 @@ const bundleBodySchema = z.object({
   discountType: z.enum(["percentage", "fixed"]).default("percentage"),
   discountTiers: z.array(
     z.object({ minQty: z.number().int().min(1), discountValue: z.number().min(0) })
-  ).default([]),
+  ).min(1, "At least one discount tier is required"),
   status: z.enum(["draft", "active", "archived"]).default("draft"),
-  slots: z.array(bundleSlotSchema).default([]),
+  slots: z.array(bundleSlotSchema).min(1, "At least one product slot is required"),
 });
 
 function verifyWebhookHmac(body: string, hmacHeader: string): boolean {
