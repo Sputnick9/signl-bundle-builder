@@ -125,7 +125,7 @@ export default function AdminBundleForm() {
         discountTiers: tiers,
         status,
         slots: slots.map((slot) => ({
-          name: slot.name || "Unnamed slot",
+          name: slot.name.trim(),
           minQty: slot.minQty || 1,
           maxQty: slot.maxQty || null,
           products: slot.products
@@ -263,7 +263,8 @@ export default function AdminBundleForm() {
     true;
 
   const allSlotsHaveProducts = slots.every((s) => s.products.length > 0);
-  const canSave = name.trim().length > 0 && slots.length > 0 && allSlotsHaveProducts && tiers.length > 0;
+  const allSlotsHaveNames = slots.every((s) => s.name.trim().length > 0);
+  const canSave = name.trim().length > 0 && slots.length > 0 && allSlotsHaveNames && allSlotsHaveProducts && tiers.length > 0;
 
   if (loadingBundle) {
     return (
