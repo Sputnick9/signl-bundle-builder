@@ -105,7 +105,7 @@
     var root = el("div", { className: "signl-bp" });
     root.dataset.bundleId = bundle.id;
 
-    var maxTier = self.getMaxTier(bundle);
+    var maxTier = bundle.discountEnabled !== false ? self.getMaxTier(bundle) : null;
     var header = el("div", { className: "signl-bp__header" });
     var headerContent = el("div", { className: "signl-bp__header-content" });
     headerContent.appendChild(el("h3", { className: "signl-bp__title" }, bundle.name));
@@ -363,8 +363,8 @@
     var self = this;
     var totals = self.getTotals(bundle);
     var valid = self.allSlotsValid(bundle);
-    var maxTier = self.getMaxTier(bundle);
-    var nextTier = self.getNextTier(bundle, totals.totalQty);
+    var maxTier = bundle.discountEnabled !== false ? self.getMaxTier(bundle) : null;
+    var nextTier = bundle.discountEnabled !== false ? self.getNextTier(bundle, totals.totalQty) : null;
 
     var bar = el("div", { className: "signl-bp__cart-bar" });
 
