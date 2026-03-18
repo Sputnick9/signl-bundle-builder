@@ -27,6 +27,23 @@ import {
 import type { SlotSeed } from "./bundle-db";
 import { z } from "zod";
 
+const SHOPIFY_HOST_PATTERN = /^(admin\.shopify\.com|[a-z0-9][a-z0-9-]*\.myshopify\.com)(\/|$)/i;
+
+function decodeShopifyHost(host: string | undefined, shop: string): string {
+  if (!host) return `https://${shop}/admin/apps`;
+  try {
+    const decoded = Buffer.from(host, "base64").toString("utf8");
+    const url = new URL(decoded.startsWith("https://") ? decoded : `https://${decoded}`);
+    if (!SHOPIFY_HOST_PATTERN.test(url.hostname)) {
+      log(`Untrusted host param decoded to ${url.hostname} — falling back to shop admin`);
+      return `https://${shop}/admin/apps`;
+    }
+    return url.href;
+  } catch {
+    return `https://${shop}/admin/apps`;
+  }
+}
+
 const slotProductSchema = z.object({
   shopifyProductId: z.string().optional().default(""),
   shopifyVariantId: z.string().nullable().optional(),
@@ -925,19 +942,7 @@ export async function registerRoutes(
       }
 
       if (!chargeId) {
-        let exitUrl: string;
-        if (host) {
-          try {
-            const decoded = Buffer.from(host, "base64").toString("utf8");
-            exitUrl = decoded.startsWith("https://")
-              ? decoded
-              : `https://${shop}/admin/apps`;
-          } catch {
-            exitUrl = `https://${shop}/admin/apps`;
-          }
-        } else {
-          exitUrl = `https://${shop}/admin/apps`;
-        }
+        const exitUrl = decodeShopifyHost(host, shop);
         res.send(
           `<!DOCTYPE html><html><head><title>Subscription Declined</title>` +
           `<script>` +
@@ -965,19 +970,7 @@ export async function registerRoutes(
             : `/?shop=${shop}`;
           res.redirect(redirectUrl);
         } else {
-          let exitUrl: string;
-          if (host) {
-            try {
-              const decoded = Buffer.from(host, "base64").toString("utf8");
-              exitUrl = decoded.startsWith("https://")
-                ? decoded
-                : `https://${shop}/admin/apps`;
-            } catch {
-              exitUrl = `https://${shop}/admin/apps`;
-            }
-          } else {
-            exitUrl = `https://${shop}/admin/apps`;
-          }
+          const exitUrl = decodeShopifyHost(host, shop);
           res.send(
             `<!DOCTYPE html><html><head><title>Subscription Not Approved</title>` +
             `<script>` +
@@ -990,19 +983,7 @@ export async function registerRoutes(
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Unknown error";
         log(`Billing return error: ${msg}`);
-        let exitUrl: string;
-        if (host) {
-          try {
-            const decoded = Buffer.from(host, "base64").toString("utf8");
-            exitUrl = decoded.startsWith("https://")
-              ? decoded
-              : `https://${shop}/admin/apps`;
-          } catch {
-            exitUrl = `https://${shop}/admin/apps`;
-          }
-        } else {
-          exitUrl = `https://${shop}/admin/apps`;
-        }
+        const exitUrl = decodeShopifyHost(host, shop);
         res.send(
           `<!DOCTYPE html><html><head><title>Billing Error</title>` +
           `<script>` +
