@@ -477,13 +477,49 @@ export async function registerRoutes(
     res.sendStatus(204);
   });
 
-  app.options("/api/storefront/product-variants", (_req: Request, res: Response) => {
-    setCorsStorefront(res);
-    res.sendStatus(204);
-  });
-
   /* GET /api/storefront/bundles?shop=xxx&productId=gid://shopify/Product/yyy
-   * Returns active bundles containing the given product (no auth required). */
+   * Returns active bundles for a product page. For slot products without a specific
+   * shopifyVariantId the server resolves available variants server-side (using the
+   * shop's existing Admin API session) and inlines them as `availableVariants`. This
+   * keeps Admin API access entirely server-side — no open proxy endpoint is exposed. */
+
+  const variantCache = new Map<string, { variants: unknown[]; expiresAt: number }>();
+
+  async function resolveVariants(
+    shopifyInstance: ReturnType<typeof getShopify>,
+    shop: string,
+    productGid: string
+  ): Promise<unknown[]> {
+    const cacheKey = `${shop}:${productGid}`;
+    const cached = variantCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.variants;
+
+    const numericIdMatch = productGid.match(/\/(\d+)$/);
+    if (!numericIdMatch || !shopifyInstance) return [];
+
+    const sessions = await sessionStorage.findSessionsByShop(shop);
+    const session = sessions.find((s) => !!s.accessToken);
+    if (!session) return [];
+
+    const client = new shopifyInstance.clients.Rest({ session });
+    const response = await client.get({ path: `products/${numericIdMatch[1]}` });
+    const product = (response.body as Record<string, unknown>).product as Record<string, unknown> | undefined;
+    if (!product) return [];
+
+    const productImage = ((product.image as Record<string, unknown> | null)?.src ?? null) as string | null;
+    const rawVariants = product.variants as Array<Record<string, unknown>>;
+    const variants = rawVariants.map((v) => ({
+      id: v.id as number,
+      title: v.title as string,
+      price: v.price as string,
+      available: v.inventory_management === null || (v.inventory_quantity as number) > 0,
+      image: productImage,
+    }));
+
+    variantCache.set(cacheKey, { variants, expiresAt: Date.now() + 5 * 60 * 1000 });
+    return variants;
+  }
+
   app.get("/api/storefront/bundles", async (req: Request, res: Response) => {
     setCorsStorefront(res);
     const shop = req.query.shop as string | undefined;
@@ -499,81 +535,27 @@ export async function registerRoutes(
     }
     try {
       const result = await getBundlesForProduct(shop, productId);
-      res.json(result);
+      const shopifyInstance = getShopify();
+
+      const enriched = await Promise.all(result.map(async (bundle) => {
+        const enrichedSlots = await Promise.all(bundle.slots.map(async (slot) => {
+          const enrichedProducts = await Promise.all(slot.products.map(async (product) => {
+            if (!product.shopifyVariantId && product.shopifyProductId && shopifyInstance) {
+              const availableVariants = await resolveVariants(shopifyInstance, shop, product.shopifyProductId).catch(() => []);
+              return { ...product, availableVariants };
+            }
+            return product;
+          }));
+          return { ...slot, products: enrichedProducts };
+        }));
+        return { ...bundle, slots: enrichedSlots };
+      }));
+
+      res.json(enriched);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       log(`Storefront bundles error: ${msg}`);
       res.status(500).json({ error: "Failed to fetch bundles" });
-    }
-  });
-
-  /* GET /api/storefront/product-variants?shop=xxx&productId=gid://shopify/Product/yyy
-   * Proxies to Shopify Admin API to return product variants (no storefront token needed). */
-  app.get("/api/storefront/product-variants", async (req: Request, res: Response) => {
-    setCorsStorefront(res);
-    const shop = req.query.shop as string | undefined;
-    const productGid = req.query.productId as string | undefined;
-
-    if (!shop || !productGid) {
-      res.status(400).json({ error: "Missing shop or productId" });
-      return;
-    }
-    if (!/^[a-zA-Z0-9-]+\.myshopify\.com$/.test(shop)) {
-      res.status(400).json({ error: "Invalid shop domain" });
-      return;
-    }
-
-    const numericIdMatch = productGid.match(/\/(\d+)$/);
-    if (!numericIdMatch) {
-      res.status(400).json({ error: "Invalid product GID" });
-      return;
-    }
-    const numericId = numericIdMatch[1];
-
-    const shopifyInstance = getShopify();
-    if (!shopifyInstance) {
-      res.status(503).json({ error: "Shopify not configured" });
-      return;
-    }
-
-    try {
-      const sessions = await sessionStorage.findSessionsByShop(shop);
-      const session = sessions.find((s) => !!s.accessToken);
-      if (!session) {
-        res.status(404).json({ error: "Shop session not found" });
-        return;
-      }
-
-      const client = new shopifyInstance.clients.Rest({ session });
-      const response = await client.get({ path: `products/${numericId}` });
-      const product = (response.body as Record<string, unknown>).product as Record<string, unknown> | undefined;
-      if (!product) {
-        res.status(404).json({ error: "Product not found" });
-        return;
-      }
-
-      const productImage = ((product.image as Record<string, unknown> | null)?.src ?? null) as string | null;
-      const rawVariants = product.variants as Array<Record<string, unknown>>;
-      const variants = rawVariants.map((v) => ({
-        id: v.id as number,
-        gid: `gid://shopify/ProductVariant/${v.id}`,
-        title: v.title as string,
-        price: v.price as string,
-        available:
-          v.inventory_management === null ||
-          (v.inventory_quantity as number) > 0,
-        image: productImage,
-      }));
-
-      res.json({
-        productTitle: product.title as string,
-        productImage,
-        variants,
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      log(`Storefront product-variants error: ${msg}`);
-      res.status(500).json({ error: "Failed to fetch product variants" });
     }
   });
 

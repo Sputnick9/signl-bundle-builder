@@ -596,12 +596,40 @@
   font-size: 0.875rem;
 }
 
-/* Slot skeleton */
-.signl-bp__slot-loading {
-  padding: 1rem;
-  color: var(--bp-text-muted);
-  font-size: 0.8125rem;
-  text-align: center;
+.signl-bundle-picker__section-heading {
+  font-size: 1.375rem;
+  font-weight: 700;
+  margin: 0 0 1rem;
+  font-family: var(--bp-font);
+}
+
+.signl-bp__success {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: #d1fae5;
+  color: #065f46;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-bottom: 1px solid #6ee7b7;
+  animation: bp-fadeIn 0.2s ease;
+}
+
+.signl-bp__error-banner {
+  padding: 0.75rem 1.25rem;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: var(--bp-radius);
+  margin-bottom: 0.75rem;
+  animation: bp-fadeIn 0.2s ease;
+}
+
+@keyframes bp-fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* Responsive: stack header on mobile */
