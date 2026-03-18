@@ -18,7 +18,7 @@ import type { SlotSeed } from "./bundle-db";
 import { z } from "zod";
 
 const slotProductSchema = z.object({
-  shopifyProductId: z.string().min(1),
+  shopifyProductId: z.string().optional().default(""),
   shopifyVariantId: z.string().nullable().optional(),
   productTitle: z.string().min(1),
   variantTitle: z.string().nullable().optional(),
@@ -30,7 +30,10 @@ const bundleSlotSchema = z.object({
   minQty: z.number().int().min(1).default(1),
   maxQty: z.number().int().min(1).nullable().optional(),
   products: z.array(slotProductSchema).default([]),
-});
+}).refine(
+  (s) => s.maxQty == null || s.maxQty >= s.minQty,
+  { message: "maxQty must be greater than or equal to minQty", path: ["maxQty"] }
+);
 
 const bundleBodySchema = z.object({
   shop: z.string().optional(),

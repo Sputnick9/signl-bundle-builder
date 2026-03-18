@@ -125,7 +125,7 @@ export default function AdminBundleForm() {
           products: slot.products
             .filter((p) => p.productTitle.trim())
             .map((p) => ({
-              shopifyProductId: p.shopifyProductId || `draft-${Math.random().toString(36).slice(2)}`,
+              shopifyProductId: p.shopifyProductId || "",
               shopifyVariantId: p.shopifyVariantId || null,
               productTitle: p.productTitle,
               variantTitle: p.variantTitle || null,
