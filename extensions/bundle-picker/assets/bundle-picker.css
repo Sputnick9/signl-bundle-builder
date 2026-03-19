@@ -189,13 +189,13 @@
   flex-shrink: 0;
 }
 
-/* Tab body fade animation */
+/* Tab body slide-in animation (enters from slightly below) */
 .signl-bp__slot-body--entering {
-  animation: bp-fadeIn 0.2s ease forwards;
+  animation: bp-slideIn 0.2s ease forwards;
 }
 
-@keyframes bp-fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
+@keyframes bp-slideIn {
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 

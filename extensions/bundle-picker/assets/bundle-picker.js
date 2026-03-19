@@ -127,7 +127,7 @@
     }
     root.appendChild(header);
 
-    if (bundle.slots.length > 1) {
+    if (bundle.slots.length >= 1) {
       root.appendChild(self.renderTabBar(bundle));
     }
 
