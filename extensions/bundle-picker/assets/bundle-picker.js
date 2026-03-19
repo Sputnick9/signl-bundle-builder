@@ -142,16 +142,6 @@
     var slotsWrap = el("div", { className: "signl-bp__slots" });
     if (activeSlot) {
       var slotEl = self.renderSlot(bundle, activeSlot, activeSlotIdx + 1);
-      if (self.enteringBundle === bundle.id) {
-        var body = slotEl.querySelector(".signl-bp__slot-body");
-        if (body) {
-          body.classList.add("signl-bp__slot-body--entering");
-          body.addEventListener("animationend", function () {
-            body.classList.remove("signl-bp__slot-body--entering");
-          }, { once: true });
-        }
-        self.enteringBundle = null;
-      }
       slotsWrap.appendChild(slotEl);
     }
     root.appendChild(slotsWrap);
@@ -196,9 +186,53 @@
       if (done || slotTotal > 0) tab.appendChild(indicator);
 
       tab.addEventListener("click", function () {
+        if (self.activeSlots[bundle.id] === slot.id) return;
         self.activeSlots[bundle.id] = slot.id;
-        self.enteringBundle = bundle.id;
-        self.refresh();
+
+        var bundleEl = self.container.querySelector('[data-bundle-id="' + bundle.id + '"]');
+        if (!bundleEl) { self.refresh(); return; }
+
+        var oldSlotsWrap = bundleEl.querySelector(".signl-bp__slots");
+        var oldBody = oldSlotsWrap && oldSlotsWrap.querySelector(".signl-bp__slot-body");
+
+        function swapSlot() {
+          var activeSlotId = self.activeSlots[bundle.id];
+          var newActiveSlot = null;
+          var newActiveSlotIdx = 0;
+          bundle.slots.forEach(function (s, idx) {
+            if (s.id === activeSlotId) { newActiveSlot = s; newActiveSlotIdx = idx; }
+          });
+          if (!newActiveSlot && bundle.slots.length) { newActiveSlot = bundle.slots[0]; newActiveSlotIdx = 0; }
+
+          var newSlotsWrap = el("div", { className: "signl-bp__slots" });
+          if (newActiveSlot) {
+            var slotEl = self.renderSlot(bundle, newActiveSlot, newActiveSlotIdx + 1);
+            var body = slotEl.querySelector(".signl-bp__slot-body");
+            if (body) {
+              body.classList.add("signl-bp__slot-body--entering");
+              body.addEventListener("animationend", function () {
+                body.classList.remove("signl-bp__slot-body--entering");
+              }, { once: true });
+            }
+            newSlotsWrap.appendChild(slotEl);
+          }
+          if (oldSlotsWrap && oldSlotsWrap.parentNode) {
+            oldSlotsWrap.parentNode.replaceChild(newSlotsWrap, oldSlotsWrap);
+          }
+
+          var newTabBar = self.renderTabBar(bundle);
+          var oldTabBar = bundleEl.querySelector(".signl-bp__tab-bar");
+          if (oldTabBar && oldTabBar.parentNode) {
+            oldTabBar.parentNode.replaceChild(newTabBar, oldTabBar);
+          }
+        }
+
+        if (oldBody) {
+          oldBody.classList.add("signl-bp__slot-body--exiting");
+          oldBody.addEventListener("animationend", function () { swapSlot(); }, { once: true });
+        } else {
+          swapSlot();
+        }
       });
 
       bar.appendChild(tab);
