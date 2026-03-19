@@ -99,7 +99,7 @@
 /* Collection tab bar */
 .signl-bp__tab-bar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.5rem;
   padding: 1rem 1.5rem;
   border-bottom: 1px solid var(--bp-border);
@@ -128,6 +128,8 @@
   color: var(--bp-text-muted);
   transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
   white-space: nowrap;
+  min-width: 80px;
+  justify-content: center;
 }
 
 .signl-bp__tab:hover {
@@ -153,8 +155,8 @@
 }
 
 .signl-bp__tab img {
-  width: 1.375rem;
-  height: 1.375rem;
+  width: 1.5rem;
+  height: 1.5rem;
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
@@ -199,12 +201,12 @@
 
 @media (max-width: 480px) {
   .signl-bp__tab-bar {
-    flex-wrap: nowrap;
     padding: 0.75rem 1rem;
   }
   .signl-bp__tab {
     font-size: 0.75rem;
     padding: 0.375rem 0.75rem;
+    min-width: 64px;
   }
 }
 

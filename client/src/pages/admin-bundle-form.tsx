@@ -49,8 +49,12 @@ const defaultTiers: DiscountTierRule[] = [
 const STEPS = ["Bundle Details", "Collections", "Discount Tiers"] as const;
 type StepIndex = 0 | 1 | 2;
 
-const emptySlot = (): SlotEntry => ({
-  name: "",
+const SLOT_NAME_DEFAULTS = [
+  "T-Shirts", "Pants", "Sweats & Hoodies", "Polos", "Hats", "Shoes", "Accessories",
+];
+
+const emptySlot = (index = 0): SlotEntry => ({
+  name: SLOT_NAME_DEFAULTS[index % SLOT_NAME_DEFAULTS.length] ?? "",
   imageUrl: "",
   minQty: 1,
   maxQty: null,
@@ -174,7 +178,7 @@ export default function AdminBundleForm() {
   }, []);
 
   const addSlot = useCallback(() => {
-    setSlots((prev) => [...prev, emptySlot()]);
+    setSlots((prev) => [...prev, emptySlot(prev.length)]);
   }, []);
 
   const removeSlot = useCallback((i: number) => {
