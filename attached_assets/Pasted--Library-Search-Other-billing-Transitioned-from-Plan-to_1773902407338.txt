@@ -1,0 +1,147 @@
+
+Library
+Search
+Other
+/billing
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Transitioned from Plan to Build mode
+Time worked
+23 seconds
+Work done
+1 action
+Agent Usage
+$0.18
+Ok, we need to make some changes. The browse Shopify products is not working or syncing to my products. Is that due to the scope?
+
+Yes, we need them to be able to browse their products. Or what would be even better would be to pull sections based on collections rather than building so products would fall into place based on products within that collection and if those products are variated or not that is how they would be layed out and categorized.
+
+Once collections have been added, we would want the "bundle builder" to be an app that can be added as a section in a "page".
+
+I think this whole things needs a bit of a revamp. I'd like to know how long it will take and the build difficulty? See the image here. I want the navigation to live under the Apps section rather than inside it.
+
+I would also like to build in the following within that navigation on the side. So far we only have dashboard, and bundles.
+
+Dashboard
+
+Bundles
+
+Analytics
+
+Settings (Where you can change, button colors, theme colors, border colors, font colors, sticky cart colors and progress bar colors.
+
+Pricing
+
+Support
+
+Time worked
+3 minutes
+Work done
+14 actions
+Items read
+39 lines
+Code changed
++186
+-0
+Agent Usage
+$0.66
+I still want to plan. Although it says 9-10 days what is that for replit timing?
+
+Time worked
+18 seconds
+Agent Usage
+$0.04
+Cost in the end?
+
+Time worked
+9 seconds
+Agent Usage
+$0.03
+I am still adding.
+
+within the setting, we should be able to have a custom CSS section for the design. Unless they would be able to do that in the page already.
+
+I think the "Dashboard" can be removed. and alot of that info can be moved into the "Bundles" page.
+
+Total Bundles (numbers)
+
+Active Bundles (numbers)
+
+Create new bundle
+
+View All Bundles
+
+Preview Storefront UI
+
+Adding some step by step instructions on how to build out the bundles (This would be outside the step by steps that come with creating the new bundle (if there is step by step).
+
+FAQs
+
+Time worked
+1 minute
+Work done
+4 actions
+Code changed
++39
+-30
+Agent Usage
+$0.41
+Let's start with #6
+
+Navigation & App Shell Revamp
+The current app has no persistent navigation and a standalone Dashboard page that duplicates what belongs on the Bundles page. This task consolidates the app into a clean nav shell: Dashboard is removed, the Bundles page becomes the central hub of the app, and all pages share a consistent AdminLayout wrapper. The nav appears under "Apps" in Shopify admin (matching the reference screenshot) with items: Bundles, Analytics, Settings, Pricing, Support.
+
+Time worked
+20 minutes
+Work done
+65 actions
+Items read
+428 lines
+Code changed
++781
+-226
+Agent Usage
+$2.92
+When will the shell live in the left side navigation?
+
+Before we get into the pricing, I would like to build 3 tiers.
+
+Free to Install Up to $500 in Bundle Sales / Month
+$29 Up to $5000 in Bundle Sales/Month (Essential)
+Features (add features below)
+$49 Unlimited Bundle Sales (Pro)
+Features
+Everthing in Esseintial, Priority Support and Onboarding, 14-Day Free Trial, Access to CSS (whatever else we think would be a good feature and step above essential.)
