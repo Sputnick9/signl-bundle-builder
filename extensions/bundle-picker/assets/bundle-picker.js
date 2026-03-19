@@ -149,28 +149,134 @@
       });
   };
 
+  var COLOR_PROPS = [
+    ["buttonPrimary", "--bp-primary"],
+    ["buttonSecondary", "--bp-primary-light"],
+    ["themeAccent", "--bp-primary-dark"],
+    ["borderColor", "--bp-border"],
+    ["fontColor", "--bp-text"],
+    ["stickyCartBg", "--bp-cart-bg"],
+    ["stickyCartText", "--bp-cart-text"],
+    ["progressBarFill", "--bp-progress-fill"],
+    ["progressBarBg", "--bp-progress-bg"],
+  ];
+
+  function prefixSelectors(selectorStr, prefix) {
+    return selectorStr.split(",").map(function(s) {
+      s = s.trim();
+      if (!s) return "";
+      if (s === prefix || s.indexOf(prefix + " ") === 0 || s.indexOf(prefix + ".") === 0 ||
+          s.indexOf(prefix + "#") === 0 || s.indexOf(prefix + ":") === 0 || s.indexOf(prefix + "[") === 0) {
+        return s;
+      }
+      return prefix + " " + s;
+    }).filter(Boolean).join(", ");
+  }
+
+  function scopeBlock(css, prefix) {
+    var result = "";
+    var i = 0;
+    var len = css.length;
+    while (i < len) {
+      var selBuf = "";
+      var inComment = false;
+      while (i < len) {
+        if (!inComment && css[i] === "/" && css[i + 1] === "*") {
+          inComment = true; selBuf += css[i++]; continue;
+        }
+        if (inComment) {
+          selBuf += css[i];
+          if (css[i] === "*" && css[i + 1] === "/") { inComment = false; selBuf += css[++i]; }
+          i++; continue;
+        }
+        if (css[i] === "{") break;
+        selBuf += css[i++];
+      }
+      if (i >= len) { result += selBuf; break; }
+      var sel = selBuf.trim();
+      i++;
+      var bodyStart = i;
+      var depth = 1;
+      while (i < len && depth > 0) {
+        if (css[i] === "{") depth++;
+        else if (css[i] === "}") depth--;
+        i++;
+      }
+      var body = css.slice(bodyStart, i - 1);
+      if (sel.charAt(0) === "@") {
+        var isCondAtRule = /^@(media|supports|document|layer)\b/i.test(sel);
+        if (isCondAtRule) {
+          result += sel + " {" + scopeBlock(body, prefix) + "}";
+        } else {
+          result += sel + " {" + body + "}";
+        }
+      } else if (sel) {
+        result += prefixSelectors(sel, prefix) + " {" + body + "}";
+      }
+    }
+    return result;
+  }
+
+  function scopeCustomCss(css, selector) {
+    if (!css || !css.trim()) return "";
+    return scopeBlock(css, selector);
+  }
+
+  var _cssInstanceCounter = 0;
+
+  SignlBundlePicker.prototype.applySettings = function (settings) {
+    if (!settings) return;
+    var self = this;
+    var root = this.container;
+    COLOR_PROPS.forEach(function (pair) {
+      var val = settings[pair[0]];
+      if (val) root.style.setProperty(pair[1], val);
+    });
+
+    var customCss = settings.customCss || "";
+    var styleId = this._cssStyleId;
+    if (!styleId) {
+      styleId = "signl-bp-custom-css-" + (++_cssInstanceCounter);
+      this._cssStyleId = styleId;
+    }
+    var existing = document.getElementById(styleId);
+    if (existing) existing.remove();
+    if (customCss.trim()) {
+      var scoped = scopeCustomCss(customCss, ".signl-bundle-picker");
+      var style = document.createElement("style");
+      style.id = styleId;
+      style.textContent = scoped;
+      document.head.appendChild(style);
+    }
+
+  };
+
   SignlBundlePicker.prototype.init = function () {
     var self = this;
     if (!this.appUrl) {
       this.container.innerHTML = "";
       return;
     }
-    var url;
+    var bundlesUrl;
     if (this.bundleId) {
-      url = this.appUrl + "/api/storefront/bundles"
+      bundlesUrl = this.appUrl + "/api/storefront/bundles"
         + "?shop=" + encodeURIComponent(this.shop)
         + "&bundleId=" + encodeURIComponent(this.bundleId);
     } else {
-      url = this.appUrl + "/api/storefront/bundles"
+      bundlesUrl = this.appUrl + "/api/storefront/bundles"
         + "?shop=" + encodeURIComponent(this.shop)
         + "&productId=" + encodeURIComponent(this.productId);
     }
-    fetch(url)
-      .then(function (r) {
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        return r.json();
-      })
-      .then(function (data) {
+    var settingsUrl = this.appUrl + "/api/storefront/settings"
+      + "?shop=" + encodeURIComponent(this.shop);
+
+    Promise.all([
+      fetch(bundlesUrl).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }),
+      fetch(settingsUrl).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }),
+    ])
+      .then(function (results) {
+        var data = results[0];
+        var settings = results[1];
         self.bundles = data || [];
         if (!self.bundles.length) {
           self.container.innerHTML = "";
@@ -182,7 +288,6 @@
           self.activeSlots[b.id] = b.slots.length ? b.slots[0].id : null;
           self.trackEvent(b.id, "view");
         });
-
         var collectionSlots = [];
         self.bundles.forEach(function (b) {
           b.slots.forEach(function (s) {
@@ -191,6 +296,8 @@
             }
           });
         });
+
+        self.applySettings(settings);
 
         if (!collectionSlots.length) {
           self.render();

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pgTable, text, boolean, timestamp, serial, integer, jsonb, index, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp, serial, integer, jsonb, index, pgEnum, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export const shopifySessions = pgTable("shopify_sessions", {
@@ -185,3 +185,36 @@ export interface BundleAnalyticsStat {
   orders: number;
   conversionRate: number;
 }
+
+export const shopSettings = pgTable("shop_settings", {
+  id: serial("id").primaryKey(),
+  shop: text("shop").notNull().unique(),
+  buttonPrimary: text("button_primary"),
+  buttonSecondary: text("button_secondary"),
+  themeAccent: text("theme_accent"),
+  borderColor: text("border_color"),
+  fontColor: text("font_color"),
+  stickyCartBg: text("sticky_cart_bg"),
+  stickyCartText: text("sticky_cart_text"),
+  progressBarFill: text("progress_bar_fill"),
+  progressBarBg: text("progress_bar_bg"),
+  customCss: text("custom_css"),
+});
+
+export type ShopSettings = typeof shopSettings.$inferSelect;
+
+export const insertShopSettingsSchema = createInsertSchema(shopSettings).omit({ id: true });
+export type InsertShopSettings = z.infer<typeof insertShopSettingsSchema>;
+
+export const DEFAULT_SHOP_SETTINGS = {
+  buttonPrimary: "#2A9D8F",
+  buttonSecondary: "#E9F5F4",
+  themeAccent: "#2A9D8F",
+  borderColor: "#E5E7EB",
+  fontColor: "#111827",
+  stickyCartBg: "#1F2937",
+  stickyCartText: "#FFFFFF",
+  progressBarFill: "#2A9D8F",
+  progressBarBg: "#E5E7EB",
+  customCss: "",
+} as const;

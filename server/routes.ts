@@ -2,8 +2,10 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { createHmac, timingSafeEqual } from "crypto";
 import { storage } from "./storage";
-import { addToCartSchema, bundles, type BundleWithSlots } from "@shared/schema";
+import { addToCartSchema, bundles, shopSettings, insertShopSettingsSchema, DEFAULT_SHOP_SETTINGS, type BundleWithSlots } from "@shared/schema";
 import type { DiscountTierRule } from "@shared/schema";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 import { getShopify, shopifyConfigured, sessionStorage, getAppUrl } from "./shopify";
 import { log } from "./index";
 import {
@@ -1594,6 +1596,109 @@ export async function registerRoutes(
       });
     });
   }
+
+  /* ── Shop Settings endpoints ──────────────────────────────────────────── */
+
+  const COLOR_SETTING_KEYS = [
+    "buttonPrimary", "buttonSecondary", "themeAccent", "borderColor",
+    "fontColor", "stickyCartBg", "stickyCartText", "progressBarFill", "progressBarBg",
+  ] as const;
+
+  const HEX_COLOR_RE = /^#[0-9A-Fa-f]{3}([0-9A-Fa-f]{3})?$/;
+
+  const shopSettingsBodySchema = insertShopSettingsSchema.omit({ shop: true }).extend(
+    Object.fromEntries(
+      COLOR_SETTING_KEYS.map((k) => [
+        k,
+        z.string().regex(HEX_COLOR_RE, "Must be a valid hex color (e.g. #2A9D8F)").nullable().optional(),
+      ])
+    ) as Record<typeof COLOR_SETTING_KEYS[number], z.ZodTypeAny>
+  ).extend({
+    customCss: z.string().max(50000, "Custom CSS must be under 50 KB").nullable().optional(),
+  });
+
+  type SettingsPayload = typeof DEFAULT_SHOP_SETTINGS;
+
+  function toSettingsPayload(row: typeof DEFAULT_SHOP_SETTINGS & Partial<{ id: number; shop: string }>): SettingsPayload {
+    return {
+      buttonPrimary: row.buttonPrimary ?? DEFAULT_SHOP_SETTINGS.buttonPrimary,
+      buttonSecondary: row.buttonSecondary ?? DEFAULT_SHOP_SETTINGS.buttonSecondary,
+      themeAccent: row.themeAccent ?? DEFAULT_SHOP_SETTINGS.themeAccent,
+      borderColor: row.borderColor ?? DEFAULT_SHOP_SETTINGS.borderColor,
+      fontColor: row.fontColor ?? DEFAULT_SHOP_SETTINGS.fontColor,
+      stickyCartBg: row.stickyCartBg ?? DEFAULT_SHOP_SETTINGS.stickyCartBg,
+      stickyCartText: row.stickyCartText ?? DEFAULT_SHOP_SETTINGS.stickyCartText,
+      progressBarFill: row.progressBarFill ?? DEFAULT_SHOP_SETTINGS.progressBarFill,
+      progressBarBg: row.progressBarBg ?? DEFAULT_SHOP_SETTINGS.progressBarBg,
+      customCss: row.customCss ?? DEFAULT_SHOP_SETTINGS.customCss,
+    };
+  }
+
+  app.get("/api/settings", shopifyAuth, requireBilling, async (req: Request, res: Response) => {
+    const authedReq = req as AuthenticatedRequest;
+    const shop = resolveShop(authedReq);
+    if (!shop) {
+      res.status(401).json({ error: "Unauthorized: missing shop context" });
+      return;
+    }
+    try {
+      const rows = await db.select().from(shopSettings).where(eq(shopSettings.shop, shop)).limit(1);
+      res.json(toSettingsPayload({ ...DEFAULT_SHOP_SETTINGS, ...rows[0] }));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      log(`Get settings error: ${msg}`);
+      res.status(500).json({ error: "Failed to fetch settings" });
+    }
+  });
+
+  app.put("/api/settings", shopifyAuth, requireBilling, async (req: Request, res: Response) => {
+    const authedReq = req as AuthenticatedRequest;
+    const shop = resolveShop(authedReq);
+    if (!shop) {
+      res.status(401).json({ error: "Unauthorized: missing shop context" });
+      return;
+    }
+    const parsed = shopSettingsBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
+      return;
+    }
+    try {
+      const values = { ...parsed.data, shop };
+      await db.insert(shopSettings)
+        .values(values)
+        .onConflictDoUpdate({ target: shopSettings.shop, set: parsed.data });
+      const rows = await db.select().from(shopSettings).where(eq(shopSettings.shop, shop)).limit(1);
+      res.json(toSettingsPayload({ ...DEFAULT_SHOP_SETTINGS, ...rows[0] }));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      log(`Put settings error: ${msg}`);
+      res.status(500).json({ error: "Failed to save settings" });
+    }
+  });
+
+  /* GET /api/storefront/settings?shop=xxx — public, no auth */
+  app.options("/api/storefront/settings", (_req: Request, res: Response) => {
+    setCorsStorefront(res);
+    res.sendStatus(204);
+  });
+
+  app.get("/api/storefront/settings", async (req: Request, res: Response) => {
+    setCorsStorefront(res);
+    const shop = req.query.shop as string | undefined;
+    if (!shop || !/^[a-zA-Z0-9-]+\.myshopify\.com$/.test(shop)) {
+      res.status(400).json({ error: "Missing or invalid shop" });
+      return;
+    }
+    try {
+      const rows = await db.select().from(shopSettings).where(eq(shopSettings.shop, shop)).limit(1);
+      res.json(toSettingsPayload({ ...DEFAULT_SHOP_SETTINGS, ...rows[0] }));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      log(`Storefront settings error: ${msg}`);
+      res.json(DEFAULT_SHOP_SETTINGS);
+    }
+  });
 
   return httpServer;
 }
