@@ -29,19 +29,19 @@ import type { Bundle } from "@shared/schema";
 const HOW_TO_STEPS = [
   {
     title: "Create a Bundle",
-    body: "Click 'Create New Bundle' and give it a name and description. Choose a discount type (percentage or fixed amount) and set the status to 'Draft' while building.",
+    body: "Click 'Create New Bundle' and give it a name and description. For example: 'Build Your Outfit Bundle — mix and match tees, pants, and accessories.' Choose a discount type and set status to Draft while building.",
   },
   {
-    title: "Add Product Slots",
-    body: "Each slot represents a category of products customers choose from — e.g. 'Choose a Shirt' or 'Pick an Accessory'. Add at least one slot per bundle, and assign products to each slot.",
+    title: "Add Collections",
+    body: "Each collection is a category tab customers browse in your storefront bundle builder — e.g. 'T-Shirts', 'Pants', 'Sweats & Hoodies', 'Hats', 'Accessories'. Add an optional image URL per collection to display a thumbnail on the tab.",
   },
   {
     title: "Browse & Add Products",
-    body: "Inside each slot, click 'Browse Shopify products' to open the Shopify product picker (available when opened inside Shopify Admin). Products and their variants are automatically imported.",
+    body: "Inside each collection, click 'Browse Shopify products' to open the Shopify product picker (available when opened inside Shopify Admin). Products and their variants are automatically imported.",
   },
   {
     title: "Configure Discount Tiers",
-    body: "Set up tiered discounts — e.g. buy 2 items get 10% off, buy 3 get 15%. These are applied automatically at checkout through Shopify's native discount engine.",
+    body: "Set up tiered discounts — e.g. buy 2 items get 10% off, buy 3 get 15%, buy 4 get 20%. These are applied automatically at checkout through Shopify's native discount engine.",
   },
   {
     title: "Publish to Your Storefront",
@@ -56,11 +56,15 @@ const HOW_TO_STEPS = [
 const FAQ_ITEMS = [
   {
     q: "Can I have multiple bundles active at the same time?",
-    a: "Yes — each bundle is independent. You can have unlimited active bundles across different product pages or standalone pages.",
+    a: "Yes — each bundle is independent. You can have unlimited active bundles across different product pages or standalone pages. For example, a 'Build Your Outfit' bundle and a separate 'Accessories Pack' bundle can run simultaneously.",
+  },
+  {
+    q: "How do collection tabs work on the storefront?",
+    a: "Each collection you add becomes a pill-shaped tab at the top of the bundle widget. Customers click a tab (e.g. 'T-Shirts') to browse products in that category, then navigate to the next tab to complete their bundle. Add an image URL to each collection to show a thumbnail icon inside the tab.",
   },
   {
     q: "Do discounts apply automatically at checkout?",
-    a: "Yes, once the Discount Function is registered. Shopify applies the tier discount natively at checkout — no discount codes needed.",
+    a: "Yes, once the Discount Function is registered. Shopify applies the tier discount natively at checkout — no discount codes needed. For example, add 2 items and save 10%, add 3 and save 15%.",
   },
   {
     q: "Can I assign a bundle to multiple pages?",
@@ -68,11 +72,11 @@ const FAQ_ITEMS = [
   },
   {
     q: "What happens to a bundle if I delete it?",
-    a: "The bundle and all its slot configuration are permanently removed. Any pages displaying that bundle will show an empty state until updated.",
+    a: "The bundle and all its collection configuration are permanently removed. Any pages displaying that bundle will show an empty state until updated.",
   },
   {
-    q: "Can I use the bundle builder on a 'Build Your Own Bundle' landing page?",
-    a: "Yes — the bundle builder can be placed as a section on any page in your theme, not just product pages.",
+    q: "Can I use the bundle builder on a 'Build Your Own Outfit' landing page?",
+    a: "Yes — the bundle builder can be placed as a section on any page in your theme, not just product pages. It works great as a standalone 'Build Your Look' or 'Customize Your Bundle' page.",
   },
 ];
 

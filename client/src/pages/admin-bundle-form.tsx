@@ -34,6 +34,7 @@ interface SlotProduct {
 
 interface SlotEntry {
   name: string;
+  imageUrl: string;
   minQty: number;
   maxQty: number | null;
   products: SlotProduct[];
@@ -45,11 +46,12 @@ const defaultTiers: DiscountTierRule[] = [
   { minQty: 4, discountValue: 20 },
 ];
 
-const STEPS = ["Bundle Details", "Product Slots", "Discount Tiers"] as const;
+const STEPS = ["Bundle Details", "Collections", "Discount Tiers"] as const;
 type StepIndex = 0 | 1 | 2;
 
 const emptySlot = (): SlotEntry => ({
   name: "",
+  imageUrl: "",
   minQty: 1,
   maxQty: null,
   products: [],
@@ -102,6 +104,7 @@ export default function AdminBundleForm() {
       setSlots(
         (existingBundle.slots ?? []).map((slot) => ({
           name: slot.name,
+          imageUrl: slot.imageUrl || "",
           minQty: slot.minQty,
           maxQty: slot.maxQty ?? null,
           products: slot.products.map((p) => ({
@@ -126,6 +129,7 @@ export default function AdminBundleForm() {
         status,
         slots: slots.map((slot) => ({
           name: slot.name.trim(),
+          imageUrl: slot.imageUrl || null,
           minQty: slot.minQty || 1,
           maxQty: slot.maxQty || null,
           products: slot.products
@@ -352,7 +356,7 @@ export default function AdminBundleForm() {
                     value={name}
                     onChange={setName}
                     autoComplete="off"
-                    placeholder="e.g. Summer Starter Bundle"
+                    placeholder="e.g. Build Your Outfit Bundle"
                     helpText="This name will appear to merchants in the dashboard."
                     data-testid="input-bundle-name"
                   />
@@ -362,7 +366,7 @@ export default function AdminBundleForm() {
                     onChange={setDescription}
                     multiline={3}
                     autoComplete="off"
-                    placeholder="Describe what's included in this bundle..."
+                    placeholder="e.g. Mix and match tees, pants, and accessories — save up to 20%!"
                     data-testid="input-bundle-description"
                   />
                   <InlineGrid columns={2} gap="400">
@@ -408,13 +412,13 @@ export default function AdminBundleForm() {
                 <BlockStack gap="400">
                   <InlineStack align="space-between">
                     <BlockStack gap="100">
-                      <Text as="h2" variant="headingMd">Product Slots</Text>
+                      <Text as="h2" variant="headingMd">Collections</Text>
                       <Text as="p" tone="subdued">
-                        Each slot lets customers choose from a group of products (e.g. "Choose 1 Shirt").
+                        Each collection is a category tab customers browse in the bundle builder (e.g. "T-Shirts", "Hats", "Accessories").
                       </Text>
                     </BlockStack>
                     <Button onClick={addSlot} data-testid="button-add-slot">
-                      Add slot
+                      Add collection
                     </Button>
                   </InlineStack>
                   <Divider />
@@ -422,10 +426,10 @@ export default function AdminBundleForm() {
                     <Box padding="400">
                       <BlockStack gap="100" inlineAlign="center">
                         <Text as="p" tone="subdued" alignment="center">
-                          No slots yet. Add a slot to define which products customers can choose from.
+                          No collections yet. Add one to define which products customers can choose from.
                         </Text>
                         <Text as="p" tone="caution" alignment="center">
-                          At least one slot is required to continue.
+                          At least one collection is required to continue.
                         </Text>
                       </BlockStack>
                     </Box>
@@ -437,7 +441,7 @@ export default function AdminBundleForm() {
                 <Card key={slotIdx}>
                   <BlockStack gap="400">
                     <InlineStack align="space-between" blockAlign="start">
-                      <Badge>{`Slot ${slotIdx + 1}`}</Badge>
+                      <Badge>{`Collection ${slotIdx + 1}`}</Badge>
                       <Button
                         tone="critical"
                         variant="plain"
@@ -445,19 +449,40 @@ export default function AdminBundleForm() {
                         onClick={() => removeSlot(slotIdx)}
                         data-testid={`button-remove-slot-${slotIdx}`}
                       >
-                        Remove slot
+                        Remove collection
                       </Button>
                     </InlineStack>
 
                     <FormLayout>
                       <TextField
-                        label="Slot name"
+                        label="Collection name"
                         value={slot.name}
                         onChange={(v) => updateSlot(slotIdx, "name", v)}
                         autoComplete="off"
-                        placeholder='e.g. "Choose a Shirt" or "Pick your accessory"'
-                        helpText="Shown to customers on the bundle page."
+                        placeholder='e.g. "T-Shirts", "Hats", "Accessories"'
+                        helpText="Shown as a tab label in the storefront bundle builder."
                         data-testid={`input-slot-name-${slotIdx}`}
+                      />
+                      <TextField
+                        label="Collection image URL (optional)"
+                        value={slot.imageUrl}
+                        onChange={(v) => updateSlot(slotIdx, "imageUrl", v)}
+                        autoComplete="off"
+                        placeholder="https://cdn.mystore.com/images/tshirts-tab.png"
+                        helpText="Shown as a small icon inside the tab. If left blank, only the collection name is displayed."
+                        data-testid={`input-slot-imageurl-${slotIdx}`}
+                        connectedRight={
+                          slot.imageUrl ? (
+                            <div style={{ width: 36, height: 36, borderRadius: "50%", overflow: "hidden", border: "1px solid #e5e7eb", flexShrink: 0 }}>
+                              <img
+                                src={slot.imageUrl}
+                                alt={slot.name}
+                                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                              />
+                            </div>
+                          ) : undefined
+                        }
                       />
                       <InlineGrid columns={2} gap="400">
                         <TextField
@@ -486,7 +511,7 @@ export default function AdminBundleForm() {
 
                     <InlineStack align="space-between" blockAlign="center">
                       <Text as="h3" variant="headingSm">
-                        Products in this slot ({slot.products.length})
+                        Products in this collection ({slot.products.length})
                       </Text>
                       <InlineStack gap="200">
                         <Button
@@ -509,7 +534,7 @@ export default function AdminBundleForm() {
 
                     {slot.products.length === 0 && (
                       <Text as="p" tone="subdued" alignment="center">
-                        No products yet. Use "Browse Shopify products" when connected, or add manually.
+                        No products yet. Use "Browse Shopify products" when connected, or add manually (e.g. T-Shirts, Polos, Hoodies).
                       </Text>
                     )}
 

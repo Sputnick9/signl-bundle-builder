@@ -55,6 +55,7 @@ const slotProductSchema = z.object({
 
 const bundleSlotSchema = z.object({
   name: z.string().min(1),
+  imageUrl: z.string().nullable().optional(),
   minQty: z.number().int().min(1).default(1),
   maxQty: z.number().int().min(1).nullable().optional(),
   products: z.array(slotProductSchema).min(1, "Each slot must have at least one product"),

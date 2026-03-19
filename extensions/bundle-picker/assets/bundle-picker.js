@@ -55,6 +55,7 @@
     this.appUrl = (container.dataset.appUrl || "").replace(/\/$/, "");
     this.currency = container.dataset.currency || "USD";
     this.selections = {};
+    this.activeSlots = {};
     this.bundles = [];
     this.isSubmitting = false;
     this.init();
@@ -83,6 +84,7 @@
         self.bundles.forEach(function (b) {
           self.selections[b.id] = {};
           b.slots.forEach(function (s) { self.selections[b.id][s.id] = {}; });
+          self.activeSlots[b.id] = b.slots.length ? b.slots[0].id : null;
         });
         self.render();
       })
@@ -124,14 +126,72 @@
     }
     root.appendChild(header);
 
-    var slotsWrap = el("div", { className: "signl-bp__slots" });
-    bundle.slots.forEach(function (slot, idx) {
-      slotsWrap.appendChild(self.renderSlot(bundle, slot, idx + 1));
+    if (bundle.slots.length > 1) {
+      root.appendChild(self.renderTabBar(bundle));
+    }
+
+    var activeSlotId = self.activeSlots[bundle.id];
+    var activeSlot = null;
+    var activeSlotIdx = 0;
+    bundle.slots.forEach(function (s, idx) {
+      if (s.id === activeSlotId) { activeSlot = s; activeSlotIdx = idx; }
     });
+    if (!activeSlot && bundle.slots.length) { activeSlot = bundle.slots[0]; activeSlotIdx = 0; }
+
+    var slotsWrap = el("div", { className: "signl-bp__slots" });
+    if (activeSlot) {
+      slotsWrap.appendChild(self.renderSlot(bundle, activeSlot, activeSlotIdx + 1));
+    }
     root.appendChild(slotsWrap);
 
     root.appendChild(self.buildCartBar(bundle));
     return root;
+  };
+
+  SignlBundlePicker.prototype.renderTabBar = function (bundle) {
+    var self = this;
+    var activeSlotId = self.activeSlots[bundle.id];
+    var bar = el("div", { className: "signl-bp__tab-bar" });
+
+    bundle.slots.forEach(function (slot) {
+      var isActive = slot.id === activeSlotId;
+      var slotSel = self.selections[bundle.id][slot.id] || {};
+      var slotTotal = Object.values(slotSel).reduce(function (s, x) { return s + x.qty; }, 0);
+      var done = slotTotal >= slot.minQty;
+
+      var tabClass = "signl-bp__tab";
+      if (isActive) tabClass += " signl-bp__tab--active";
+      if (done) tabClass += " signl-bp__tab--done";
+      if (!slot.imageUrl) tabClass += " signl-bp__tab--text-only";
+
+      var tab = el("button", { className: tabClass, type: "button" });
+
+      if (slot.imageUrl) {
+        var img = new Image();
+        img.src = slot.imageUrl;
+        img.alt = slot.name;
+        tab.appendChild(img);
+      }
+
+      tab.appendChild(document.createTextNode(slot.name));
+
+      var indicator = el("span", { className: done ? "signl-bp__tab-check" : "signl-bp__tab-progress" });
+      if (done) {
+        indicator.innerHTML = SVG.check;
+      } else if (slotTotal > 0) {
+        indicator.textContent = slotTotal + "/" + slot.minQty;
+      }
+      if (done || slotTotal > 0) tab.appendChild(indicator);
+
+      tab.addEventListener("click", function () {
+        self.activeSlots[bundle.id] = slot.id;
+        self.refresh();
+      });
+
+      bar.appendChild(tab);
+    });
+
+    return bar;
   };
 
   SignlBundlePicker.prototype.renderSlot = function (bundle, slot, num) {

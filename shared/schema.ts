@@ -47,6 +47,7 @@ export const bundleSlots = pgTable("bundle_slots", {
   id: serial("id").primaryKey(),
   bundleId: integer("bundle_id").notNull().references(() => bundles.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  imageUrl: text("image_url"),
   position: integer("position").notNull().default(0),
   minQty: integer("min_qty").notNull().default(1),
   maxQty: integer("max_qty"),
