@@ -49,3 +49,7 @@ integrations = ["github:1.0.0"]
 
 [userenv.shared]
 VITE_SHOPIFY_API_KEY = ""
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
