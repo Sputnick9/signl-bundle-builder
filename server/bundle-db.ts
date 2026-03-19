@@ -8,7 +8,7 @@ import type {
   BundleWithSlots,
   DiscountTierRule,
 } from "@shared/schema";
-import { and, eq, asc, desc } from "drizzle-orm";
+import { and, eq, asc, desc, isNotNull } from "drizzle-orm";
 
 type BundleInsert = typeof bundles.$inferInsert;
 type SlotInsert = typeof bundleSlots.$inferInsert;
@@ -164,7 +164,29 @@ export async function getBundlesForProduct(
 
   if (!matchingRows.length) return [];
 
-  const bundleIds = [...new Set(matchingRows.map((r) => r.bundleId))];
+  const bundleIds = Array.from(new Set(matchingRows.map((r) => r.bundleId)));
+  const results = await Promise.all(bundleIds.map((id) => getBundle(id, shop)));
+  return results.filter((b): b is BundleWithSlots => b !== null);
+}
+
+export async function getActiveBundlesWithCollectionSlots(
+  shop: string
+): Promise<BundleWithSlots[]> {
+  const rows = await db
+    .selectDistinct({ bundleId: bundleSlots.bundleId })
+    .from(bundleSlots)
+    .innerJoin(bundles, eq(bundleSlots.bundleId, bundles.id))
+    .where(
+      and(
+        eq(bundles.shop, shop),
+        eq(bundles.status, "active"),
+        isNotNull(bundleSlots.shopifyCollectionId),
+      )
+    );
+
+  if (!rows.length) return [];
+
+  const bundleIds = Array.from(new Set(rows.map((r) => r.bundleId)));
   const results = await Promise.all(bundleIds.map((id) => getBundle(id, shop)));
   return results.filter((b): b is BundleWithSlots => b !== null);
 }

@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { createHmac, timingSafeEqual } from "crypto";
 import { storage } from "./storage";
-import { addToCartSchema, bundles } from "@shared/schema";
+import { addToCartSchema, bundles, type BundleWithSlots } from "@shared/schema";
 import type { DiscountTierRule } from "@shared/schema";
 import { getShopify, shopifyConfigured, sessionStorage, getAppUrl } from "./shopify";
 import { log } from "./index";
@@ -24,6 +24,7 @@ import {
   deleteBundle,
   toBundleInsert,
   getBundlesForProduct,
+  getActiveBundlesWithCollectionSlots,
 } from "./bundle-db";
 import type { SlotSeed } from "./bundle-db";
 import { z } from "zod";
@@ -173,6 +174,7 @@ function makeShopifyAuthMiddleware() {
     }
   };
 }
+
 
 function resolveShop(
   req: AuthenticatedRequest,
@@ -697,6 +699,174 @@ export async function registerRoutes(
     }
   });
 
+  /* ── Collections API (admin) ──────────────────────────────────────────── */
+
+  const MOCK_COLLECTIONS = [
+    { id: "gid://shopify/Collection/1", title: "T-Shirts", handle: "t-shirts", productsCount: 12, image: null },
+    { id: "gid://shopify/Collection/2", title: "Pants", handle: "pants", productsCount: 8, image: null },
+    { id: "gid://shopify/Collection/3", title: "Sweats & Hoodies", handle: "sweats-hoodies", productsCount: 15, image: null },
+    { id: "gid://shopify/Collection/4", title: "Polos", handle: "polos", productsCount: 6, image: null },
+    { id: "gid://shopify/Collection/5", title: "Hats", handle: "hats", productsCount: 20, image: null },
+    { id: "gid://shopify/Collection/6", title: "Shoes", handle: "shoes", productsCount: 10, image: null },
+    { id: "gid://shopify/Collection/7", title: "Accessories", handle: "accessories", productsCount: 25, image: null },
+  ];
+
+  const MOCK_COLLECTION_PRODUCTS: Record<string, Array<{ shopifyProductId: string; productTitle: string; productImage: string | null; variants: Array<{ shopifyVariantId: string; variantTitle: string; price: string }> }>> = {
+    "1": [
+      { shopifyProductId: "gid://shopify/Product/101", productTitle: "Classic Crew Tee", productImage: null, variants: [{ shopifyVariantId: "gid://shopify/ProductVariant/1011", variantTitle: "Small / White", price: "29.99" }, { shopifyVariantId: "gid://shopify/ProductVariant/1012", variantTitle: "Medium / White", price: "29.99" }, { shopifyVariantId: "gid://shopify/ProductVariant/1013", variantTitle: "Large / Black", price: "29.99" }] },
+      { shopifyProductId: "gid://shopify/Product/102", productTitle: "Graphic Print Tee", productImage: null, variants: [{ shopifyVariantId: "gid://shopify/ProductVariant/1021", variantTitle: "Small / Blue", price: "34.99" }, { shopifyVariantId: "gid://shopify/ProductVariant/1022", variantTitle: "Medium / Blue", price: "34.99" }] },
+    ],
+    "2": [
+      { shopifyProductId: "gid://shopify/Product/201", productTitle: "Slim Fit Chinos", productImage: null, variants: [{ shopifyVariantId: "gid://shopify/ProductVariant/2011", variantTitle: "30x30", price: "59.99" }, { shopifyVariantId: "gid://shopify/ProductVariant/2012", variantTitle: "32x32", price: "59.99" }] },
+      { shopifyProductId: "gid://shopify/Product/202", productTitle: "Classic Denim Jeans", productImage: null, variants: [{ shopifyVariantId: "gid://shopify/ProductVariant/2021", variantTitle: "30x30 / Blue", price: "79.99" }] },
+    ],
+    "3": [
+      { shopifyProductId: "gid://shopify/Product/301", productTitle: "Pullover Hoodie", productImage: null, variants: [{ shopifyVariantId: "gid://shopify/ProductVariant/3011", variantTitle: "Small", price: "64.99" }, { shopifyVariantId: "gid://shopify/ProductVariant/3012", variantTitle: "Large", price: "64.99" }] },
+    ],
+  };
+
+  /* GET /api/collections?shop=
+   * Returns all collections for a shop (custom + smart).
+   * When Shopify is not configured (dev mode) shopifyAuth is a no-op and mock data
+   * is returned. When Shopify IS configured, shopifyAuth enforces a valid Bearer token
+   * so shop is always derived from the verified JWT – not from a user-supplied query param. */
+  app.get("/api/collections", shopifyAuth, async (req: Request, res: Response) => {
+    const authedReq = req as AuthenticatedRequest;
+    const shop = resolveShop(authedReq);
+
+    const shopifyInstance = getShopify();
+    if (!shopifyInstance || !shopifyConfigured) {
+      res.json({ collections: MOCK_COLLECTIONS });
+      return;
+    }
+
+    if (!shop) {
+      res.status(401).json({ error: "Unauthorized: missing shop context" });
+      return;
+    }
+
+    try {
+      const sessions = await sessionStorage.findSessionsByShop(shop);
+      const session = sessions.find((s) => !!s.accessToken);
+      if (!session) {
+        res.json({ collections: MOCK_COLLECTIONS });
+        return;
+      }
+
+      const client = new shopifyInstance.clients.Rest({ session });
+      const [customRes, smartRes] = await Promise.all([
+        client.get({ path: "custom_collections", query: { limit: "250", fields: "id,title,handle,image,products_count" } }),
+        client.get({ path: "smart_collections", query: { limit: "250", fields: "id,title,handle,image,products_count" } }),
+      ]);
+
+      const custom = ((customRes.body as Record<string, unknown>).custom_collections as Array<Record<string, unknown>>) ?? [];
+      const smart = ((smartRes.body as Record<string, unknown>).smart_collections as Array<Record<string, unknown>>) ?? [];
+
+      const normalize = (c: Record<string, unknown>) => ({
+        id: `gid://shopify/Collection/${c.id as number}`,
+        title: c.title as string,
+        handle: c.handle as string,
+        productsCount: (c.products_count as number) ?? 0,
+        image: (c.image as Record<string, unknown> | null)?.src as string | null ?? null,
+      });
+
+      const collections = [...custom.map(normalize), ...smart.map(normalize)]
+        .sort((a, b) => a.title.localeCompare(b.title));
+
+      res.json({ collections });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      log(`Collections list error: ${msg}`);
+      res.status(500).json({ error: "Failed to fetch collections" });
+    }
+  });
+
+  /* GET /api/collections/:id/products?shop=
+   * Fetches products from a collection. Public endpoint (no auth) used by storefront.
+   * In dev mode returns mock products. */
+  app.options("/api/collections/:id/products", (_req: Request, res: Response) => {
+    setCorsStorefront(res);
+    res.sendStatus(204);
+  });
+
+  app.get("/api/collections/:id/products", async (req: Request, res: Response) => {
+    setCorsStorefront(res);
+    const shop = req.query.shop as string | undefined;
+    const collectionIdParam = req.params.id as string;
+
+    if (!shop) {
+      res.status(400).json({ error: "Missing shop parameter" });
+      return;
+    }
+
+    const shopifyInstance = getShopify();
+
+    if (!shopifyInstance || !shopifyConfigured) {
+      const numericId = collectionIdParam.replace(/\D/g, "");
+      const mockProducts = MOCK_COLLECTION_PRODUCTS[numericId] ?? [];
+      res.json({ products: mockProducts });
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9-]+\.myshopify\.com$/.test(shop)) {
+      res.status(400).json({ error: "Invalid shop domain" });
+      return;
+    }
+
+    try {
+      const sessions = await sessionStorage.findSessionsByShop(shop);
+      const session = sessions.find((s) => !!s.accessToken);
+      if (!session) {
+        res.status(401).json({ error: "No active session for shop" });
+        return;
+      }
+
+      const numericId = collectionIdParam.replace(/\D/g, "");
+      if (!numericId) {
+        res.status(400).json({ error: "Invalid collection id" });
+        return;
+      }
+
+      const client = new shopifyInstance.clients.Rest({ session });
+      const allRaw: Array<Record<string, unknown>> = [];
+      let currentQuery: Record<string, string> = { collection_id: numericId, limit: "250", fields: "id,title,images,variants" };
+      let hasMore = true;
+
+      while (hasMore) {
+        const response = await client.get({ path: "products", query: currentQuery });
+        const page = ((response.body as Record<string, unknown>).products as Array<Record<string, unknown>>) ?? [];
+        allRaw.push(...page);
+        const nextPage = (response as { pageInfo?: { nextPage?: Record<string, string> } }).pageInfo?.nextPage;
+        if (nextPage) {
+          currentQuery = nextPage;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      const products = allRaw.map((p) => {
+        const images = p.images as Array<Record<string, unknown>>;
+        const variants = p.variants as Array<Record<string, unknown>>;
+        return {
+          shopifyProductId: `gid://shopify/Product/${p.id as number}`,
+          productTitle: p.title as string,
+          productImage: (images?.[0]?.src as string) ?? null,
+          variants: (variants ?? []).map((v) => ({
+            shopifyVariantId: `gid://shopify/ProductVariant/${v.id as number}`,
+            variantTitle: v.title as string,
+            price: v.price as string,
+          })),
+        };
+      });
+
+      res.json({ products });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      log(`Collection products (:id) error: ${msg}`);
+      res.status(500).json({ error: "Failed to fetch collection products" });
+    }
+  });
+
   /* GET /api/shopify/collection-products?collectionId=gid://shopify/Collection/123
    * Fetches products from a Shopify collection using the Admin API.
    * Requires a valid Shopify session (admin-only). */
@@ -734,13 +904,23 @@ export async function registerRoutes(
       }
 
       const client = new shopifyInstance.clients.Rest({ session });
-      const response = await client.get({
-        path: `products`,
-        query: { collection_id: numericId, limit: "50", fields: "id,title,images,variants" },
-      });
+      const allRaw: Array<Record<string, unknown>> = [];
+      let currentQ: Record<string, string> = { collection_id: numericId, limit: "250", fields: "id,title,images,variants" };
+      let hasMorePages = true;
 
-      const rawProducts = (response.body as Record<string, unknown>).products as Array<Record<string, unknown>> ?? [];
-      const products = rawProducts.map((p) => {
+      while (hasMorePages) {
+        const response = await client.get({ path: "products", query: currentQ });
+        const page = (response.body as Record<string, unknown>).products as Array<Record<string, unknown>> ?? [];
+        allRaw.push(...page);
+        const nxt = (response as { pageInfo?: { nextPage?: Record<string, string> } }).pageInfo?.nextPage;
+        if (nxt) {
+          currentQ = nxt;
+        } else {
+          hasMorePages = false;
+        }
+      }
+
+      const products = allRaw.map((p) => {
         const images = p.images as Array<Record<string, unknown>>;
         const variants = p.variants as Array<Record<string, unknown>>;
         const productImage = images?.[0]?.src as string ?? null;
@@ -1125,7 +1305,62 @@ export async function registerRoutes(
       return;
     }
     try {
-      let result;
+      const shopifyInstance = getShopify();
+      const sessions = shopifyInstance ? await sessionStorage.findSessionsByShop(shop) : [];
+      const session = sessions.find((s) => !!s.accessToken) || null;
+
+      const fetchCollectionProductsForSlot = async (
+        collectionId: string,
+        slotId: number
+      ): Promise<Array<Record<string, unknown>>> => {
+        const numericId = collectionId.replace(/\D/g, "");
+        if (!numericId || !shopifyInstance || !session) return [];
+        try {
+          const client = new shopifyInstance.clients.Rest({ session });
+          const allRaw: Array<Record<string, unknown>> = [];
+          let slotQuery: Record<string, string> = { collection_id: numericId, limit: "250", fields: "id,title,images,variants" };
+          let slotHasMore = true;
+
+          while (slotHasMore) {
+            const response = await client.get({ path: "products", query: slotQuery });
+            const page = ((response.body as Record<string, unknown>).products as Array<Record<string, unknown>>) ?? [];
+            allRaw.push(...page);
+            const nextSlotPage = (response as { pageInfo?: { nextPage?: Record<string, string> } }).pageInfo?.nextPage;
+            if (nextSlotPage) {
+              slotQuery = nextSlotPage;
+            } else {
+              slotHasMore = false;
+            }
+          }
+
+          return allRaw.map((p) => {
+            const images = p.images as Array<Record<string, unknown>>;
+            const variants = p.variants as Array<Record<string, unknown>>;
+            const gid = `gid://shopify/Product/${p.id as number}`;
+            return {
+              id: gid,
+              slotId,
+              shopifyProductId: gid,
+              productTitle: p.title as string,
+              productImage: (images?.[0]?.src as string) ?? null,
+              shopifyVariantId: null,
+              variantTitle: null,
+              availableVariants: (variants ?? []).map((v) => ({
+                id: v.id as number,
+                title: v.title as string,
+                price: v.price as string,
+                available: (v.inventory_management === null || (v.inventory_quantity as number) > 0),
+                image: (images?.[0]?.src as string) ?? null,
+              })),
+            };
+          });
+        } catch (collErr) {
+          log(`Storefront collection fetch error for slot ${slotId}: ${collErr instanceof Error ? collErr.message : String(collErr)}`);
+          return [];
+        }
+      };
+
+      let result: BundleWithSlots[];
       if (bundleId) {
         if (!/^\d+$/.test(bundleId)) {
           res.status(400).json({ error: "Invalid bundleId: must be a positive integer" });
@@ -1139,12 +1374,56 @@ export async function registerRoutes(
         const bundle = await getBundle(numericId, shop);
         result = bundle && bundle.status === "active" ? [bundle] : [];
       } else {
-        result = await getBundlesForProduct(shop, productId!);
+        const [productBundles, collectionBundles] = await Promise.all([
+          getBundlesForProduct(shop, productId!),
+          getActiveBundlesWithCollectionSlots(shop),
+        ]);
+
+        const bundlesById = new Map<number, typeof productBundles[number]>();
+        for (const b of productBundles) bundlesById.set(b.id, b);
+
+        for (const b of collectionBundles) {
+          if (bundlesById.has(b.id)) continue;
+          const hasCollectionSlot = b.slots.some((s) => !!s.shopifyCollectionId);
+          if (!hasCollectionSlot) continue;
+          if (!shopifyInstance || !session) {
+            bundlesById.set(b.id, b);
+            continue;
+          }
+          const productNumericId = productId!.replace(/\D/g, "");
+          if (!productNumericId) continue;
+          for (const slot of b.slots) {
+            if (!slot.shopifyCollectionId) continue;
+            const collNumericId = slot.shopifyCollectionId.replace(/\D/g, "");
+            if (!collNumericId) continue;
+            try {
+              const client = new shopifyInstance.clients.Rest({ session });
+              const checkRes = await client.get({
+                path: "products",
+                query: { collection_id: collNumericId, ids: productNumericId, fields: "id", limit: "1" },
+              });
+              const found = ((checkRes.body as Record<string, unknown>).products as Array<unknown>) ?? [];
+              if (found.length > 0) {
+                bundlesById.set(b.id, b);
+                break;
+              }
+            } catch {
+              /* skip on API error */
+            }
+          }
+        }
+        result = Array.from(bundlesById.values());
       }
-      const shopifyInstance = getShopify();
 
       const enriched = await Promise.all(result.map(async (bundle) => {
         const enrichedSlots = await Promise.all(bundle.slots.map(async (slot) => {
+          if (slot.shopifyCollectionId) {
+            const collectionProducts = await fetchCollectionProductsForSlot(slot.shopifyCollectionId, slot.id);
+            if (collectionProducts.length > 0) {
+              return { ...slot, products: collectionProducts };
+            }
+          }
+
           const enrichedProducts = await Promise.all(slot.products.map(async (product) => {
             if (!product.shopifyVariantId && product.shopifyProductId && shopifyInstance) {
               const availableVariants = await resolveVariants(shopifyInstance, shop, product.shopifyProductId).catch(() => []);

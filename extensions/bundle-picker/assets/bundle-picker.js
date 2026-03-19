@@ -60,6 +60,8 @@
     this.enteringBundle = null;
     this.bundles = [];
     this.isSubmitting = false;
+    this.collectionProductsCache = {};
+    this.loadingCollections = {};
     this.init();
   }
 
@@ -73,6 +75,78 @@
         keepalive: true,
       }).catch(function () {});
     } catch (_) {}
+  };
+
+  SignlBundlePicker.prototype.fetchCollectionProducts = function (slot, onDone) {
+    var self = this;
+    var rawId = slot.shopifyCollectionId || "";
+    if (!rawId) { onDone([]); return; }
+
+    var numericId = rawId.replace(/\D/g, "") || rawId;
+    var cacheKey = numericId;
+
+    if (self.collectionProductsCache[cacheKey]) {
+      onDone(self.collectionProductsCache[cacheKey]);
+      return;
+    }
+    if (self.loadingCollections[cacheKey]) {
+      var existing = self.loadingCollections[cacheKey];
+      existing.push(onDone);
+      return;
+    }
+
+    self.loadingCollections[cacheKey] = [onDone];
+
+    var url = self.appUrl + "/api/collections/" + encodeURIComponent(numericId) + "/products"
+      + "?shop=" + encodeURIComponent(self.shop);
+
+    fetch(url)
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        var products = (data.products || []).map(function (p) {
+          function toNumericInt(gidOrNumeric) {
+            if (!gidOrNumeric) return null;
+            var s = String(gidOrNumeric);
+            var match = s.match(/\/(\d+)$/);
+            if (match) return parseInt(match[1], 10);
+            var n = parseInt(s, 10);
+            return isNaN(n) ? null : n;
+          }
+          var baseProduct = {
+            id: p.shopifyProductId,
+            shopifyProductId: p.shopifyProductId,
+            shopifyVariantId: null,
+            productTitle: p.productTitle,
+            variantTitle: null,
+            productImage: p.productImage || null,
+            availableVariants: (p.variants || []).map(function (v) {
+              return {
+                id: toNumericInt(v.shopifyVariantId),
+                title: v.variantTitle,
+                price: v.price,
+                available: true,
+              };
+            }),
+          };
+          if (p.variants && p.variants.length === 1 && p.variants[0].variantTitle === "Default Title") {
+            baseProduct.shopifyVariantId = p.variants[0].shopifyVariantId;
+          }
+          return baseProduct;
+        });
+        self.collectionProductsCache[cacheKey] = products;
+        var callbacks = self.loadingCollections[cacheKey] || [];
+        delete self.loadingCollections[cacheKey];
+        callbacks.forEach(function (cb) { cb(products); });
+      })
+      .catch(function (err) {
+        console.error("SignlBundlePicker: collection fetch error", err);
+        var callbacks = self.loadingCollections[cacheKey] || [];
+        delete self.loadingCollections[cacheKey];
+        callbacks.forEach(function (cb) { cb([]); });
+      });
   };
 
   SignlBundlePicker.prototype.init = function () {
@@ -108,7 +182,29 @@
           self.activeSlots[b.id] = b.slots.length ? b.slots[0].id : null;
           self.trackEvent(b.id, "view");
         });
-        self.render();
+
+        var collectionSlots = [];
+        self.bundles.forEach(function (b) {
+          b.slots.forEach(function (s) {
+            if (s.shopifyCollectionId && (!s.products || !s.products.length)) {
+              collectionSlots.push({ bundle: b, slot: s });
+            }
+          });
+        });
+
+        if (!collectionSlots.length) {
+          self.render();
+          return;
+        }
+
+        var pending = collectionSlots.length;
+        collectionSlots.forEach(function (item) {
+          self.fetchCollectionProducts(item.slot, function (products) {
+            item.slot.products = products;
+            pending--;
+            if (pending === 0) { self.render(); }
+          });
+        });
       })
       .catch(function (err) {
         console.error("SignlBundlePicker: fetch error", err);

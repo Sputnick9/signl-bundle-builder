@@ -16,13 +16,22 @@ import {
   Box,
   InlineGrid,
   ProgressBar,
+  Modal,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation, useRoute } from "wouter";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { BundleWithSlots, DiscountTierRule } from "@shared/schema";
+
+interface ShopifyCollection {
+  id: string;
+  title: string;
+  handle: string;
+  productsCount: number;
+  image: string | null;
+}
 
 interface SlotProduct {
   shopifyProductId: string;
@@ -109,8 +118,13 @@ export default function AdminBundleForm() {
   const [step, setStep] = useState<StepIndex>(0);
   const pickerAvailable = isResourcePickerAvailable();
   const [collectionLoadingIdx, setCollectionLoadingIdx] = useState<number | null>(null);
-  const [collectionInputSlotIdx, setCollectionInputSlotIdx] = useState<number | null>(null);
-  const [collectionInputValue, setCollectionInputValue] = useState("");
+
+  const [collectionModalOpen, setCollectionModalOpen] = useState(false);
+  const [collectionModalSlotIdx, setCollectionModalSlotIdx] = useState<number | null>(null);
+  const [collectionSearch, setCollectionSearch] = useState("");
+  const [collections, setCollections] = useState<ShopifyCollection[]>([]);
+  const [collectionsLoading, setCollectionsLoading] = useState(false);
+  const collectionsLoadedRef = useRef(false);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -301,7 +315,9 @@ export default function AdminBundleForm() {
     async (slotIdx: number, collectionId: string, collectionTitle: string) => {
       setCollectionLoadingIdx(slotIdx);
       try {
-        const res = await apiRequest("GET", `/api/shopify/collection-products?collectionId=${encodeURIComponent(collectionId)}`);
+        const numericId = collectionId.replace(/\D/g, "") || collectionId;
+        const shopParam = new URLSearchParams(window.location.search).get("shop") || "dev-preview";
+        const res = await apiRequest("GET", `/api/collections/${encodeURIComponent(numericId)}/products?shop=${encodeURIComponent(shopParam)}`);
         const data = await res.json() as { products?: Array<{ shopifyProductId: string; productTitle: string; productImage: string | null; variants: Array<{ shopifyVariantId: string; variantTitle: string }> }> };
         const products: SlotProduct[] = (data.products ?? []).flatMap((p) => {
           if (!p.variants?.length) {
@@ -398,30 +414,41 @@ export default function AdminBundleForm() {
     );
   }, []);
 
-  const submitCollectionInput = useCallback(
-    async (slotIdx: number) => {
-      const raw = collectionInputValue.trim();
-      if (!raw) return;
-      const isNumeric = /^\d+$/.test(raw);
-      const isGid = raw.startsWith("gid://shopify/Collection/");
-      const hasUrlId = /\/collections\/\d+/.test(raw);
-      if (!isNumeric && !isGid && !hasUrlId) {
-        setError("Invalid collection ID. Enter a numeric ID (e.g. 123456789), a Shopify GID, or an admin URL containing /collections/ID.");
-        return;
+  const openCollectionModal = useCallback(async (slotIdx: number) => {
+    setCollectionModalSlotIdx(slotIdx);
+    setCollectionSearch("");
+    setCollectionModalOpen(true);
+    if (!collectionsLoadedRef.current) {
+      setCollectionsLoading(true);
+      try {
+        const res = await apiRequest("GET", "/api/collections");
+        const data = await res.json() as { collections?: ShopifyCollection[] };
+        setCollections(data.collections ?? []);
+        collectionsLoadedRef.current = true;
+      } catch {
+        setCollections([]);
+      } finally {
+        setCollectionsLoading(false);
       }
-      const collectionGid = normalizeCollectionGid(raw);
-      setSlots((prev) =>
-        prev.map((s, idx) =>
-          idx === slotIdx
-            ? { ...s, shopifyCollectionId: collectionGid, shopifyCollectionTitle: raw }
-            : s
-        )
-      );
-      setCollectionInputSlotIdx(null);
-      setCollectionInputValue("");
-      await fetchAndLoadCollectionProducts(slotIdx, collectionGid, raw);
-    },
-    [collectionInputValue, fetchAndLoadCollectionProducts]
+    }
+  }, []);
+
+  const selectCollectionFromModal = useCallback(async (collection: ShopifyCollection) => {
+    const slotIdx = collectionModalSlotIdx;
+    if (slotIdx === null) return;
+    setCollectionModalOpen(false);
+    setSlots((prev) =>
+      prev.map((s, idx) =>
+        idx === slotIdx
+          ? { ...s, shopifyCollectionId: collection.id, shopifyCollectionTitle: collection.title, name: s.name || collection.title }
+          : s
+      )
+    );
+    await fetchAndLoadCollectionProducts(slotIdx, collection.id, collection.title);
+  }, [collectionModalSlotIdx, fetchAndLoadCollectionProducts]);
+
+  const filteredCollections = collections.filter((c) =>
+    !collectionSearch || c.title.toLowerCase().includes(collectionSearch.toLowerCase())
   );
 
   const allSlotsHaveProducts = slots.every((s) => s.products.length > 0 || !!s.shopifyCollectionId);
@@ -574,15 +601,6 @@ export default function AdminBundleForm() {
 
           {step === 1 && (
             <BlockStack gap="400">
-              {!pickerAvailable && (
-                <Banner tone="info">
-                  <Text as="p">
-                    Collection browsing is available when this app is open inside Shopify Admin.
-                    Use <strong>Add manually</strong> to enter product titles and IDs while developing,
-                    or open the app embedded to use the Shopify collection picker.
-                  </Text>
-                </Banner>
-              )}
               <Card>
                 <BlockStack gap="400">
                   <InlineStack align="space-between">
@@ -711,14 +729,7 @@ export default function AdminBundleForm() {
                             <Button
                               size="slim"
                               variant="plain"
-                              onClick={() => {
-                                if (pickerAvailable) {
-                                  pickCollectionFromShopify(slotIdx);
-                                } else {
-                                  setCollectionInputSlotIdx(slotIdx);
-                                  setCollectionInputValue("");
-                                }
-                              }}
+                              onClick={() => pickerAvailable ? pickCollectionFromShopify(slotIdx) : openCollectionModal(slotIdx)}
                               data-testid={`button-change-collection-${slotIdx}`}
                             >
                               Change collection
@@ -739,14 +750,7 @@ export default function AdminBundleForm() {
                               size="slim"
                               variant="primary"
                               loading={collectionLoadingIdx === slotIdx}
-                              onClick={() => {
-                                if (pickerAvailable) {
-                                  pickCollectionFromShopify(slotIdx);
-                                } else {
-                                  setCollectionInputSlotIdx(slotIdx);
-                                  setCollectionInputValue("");
-                                }
-                              }}
+                              onClick={() => pickerAvailable ? pickCollectionFromShopify(slotIdx) : openCollectionModal(slotIdx)}
                               data-testid={`button-browse-collections-${slotIdx}`}
                             >
                               Browse collections
@@ -764,52 +768,7 @@ export default function AdminBundleForm() {
                       </InlineStack>
                     </InlineStack>
 
-                    {collectionInputSlotIdx === slotIdx && (
-                      <Box
-                        background="bg-surface-secondary"
-                        borderRadius="200"
-                        padding="300"
-                      >
-                        <BlockStack gap="200">
-                          <Text as="p" variant="bodySm" tone="subdued">
-                            Paste your Shopify collection ID or admin URL
-                          </Text>
-                          <TextField
-                            label="Collection ID or URL"
-                            labelHidden
-                            value={collectionInputValue}
-                            onChange={setCollectionInputValue}
-                            placeholder="e.g. 123456789 or https://admin.shopify.com/store/.../collections/123456789"
-                            autoComplete="off"
-                            data-testid={`input-collection-id-${slotIdx}`}
-                          />
-                          <InlineStack gap="200">
-                            <Button
-                              size="slim"
-                              variant="primary"
-                              disabled={!collectionInputValue.trim()}
-                              onClick={() => submitCollectionInput(slotIdx)}
-                              data-testid={`button-submit-collection-id-${slotIdx}`}
-                            >
-                              Link collection
-                            </Button>
-                            <Button
-                              size="slim"
-                              variant="plain"
-                              onClick={() => {
-                                setCollectionInputSlotIdx(null);
-                                setCollectionInputValue("");
-                              }}
-                              data-testid={`button-cancel-collection-id-${slotIdx}`}
-                            >
-                              Cancel
-                            </Button>
-                          </InlineStack>
-                        </BlockStack>
-                      </Box>
-                    )}
-
-                    {slot.products.length === 0 && !slot.shopifyCollectionId && collectionInputSlotIdx !== slotIdx && (
+                    {slot.products.length === 0 && !slot.shopifyCollectionId && (
                       <Text as="p" tone="subdued" alignment="center">
                         Link a Shopify collection to import its products automatically, or add products manually.
                       </Text>
@@ -991,6 +950,68 @@ export default function AdminBundleForm() {
           </InlineStack>
         </BlockStack>
       </Page>
+
+      <Modal
+        open={collectionModalOpen}
+        onClose={() => setCollectionModalOpen(false)}
+        title="Pick a Collection"
+        primaryAction={undefined}
+        secondaryActions={[{ content: "Cancel", onAction: () => setCollectionModalOpen(false) }]}
+      >
+        <Modal.Section>
+          <BlockStack gap="400">
+            <TextField
+              label=""
+              labelHidden
+              placeholder="Search collections…"
+              value={collectionSearch}
+              onChange={setCollectionSearch}
+              autoComplete="off"
+              data-testid="input-collection-search"
+            />
+            {collectionsLoading && (
+              <Box padding="400">
+                <BlockStack inlineAlign="center">
+                  <Spinner size="small" />
+                  <Text as="p" tone="subdued">Loading collections…</Text>
+                </BlockStack>
+              </Box>
+            )}
+            {!collectionsLoading && filteredCollections.length === 0 && (
+              <Text as="p" tone="subdued" alignment="center">
+                {collections.length === 0 ? "No collections found." : "No collections match your search."}
+              </Text>
+            )}
+            {!collectionsLoading && filteredCollections.map((c) => (
+              <Box
+                key={c.id}
+                background="bg-surface-secondary"
+                borderRadius="200"
+                padding="300"
+              >
+                <button
+                  type="button"
+                  style={{ width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0 }}
+                  onClick={() => selectCollectionFromModal(c)}
+                  data-testid={`button-select-collection-${c.id.replace(/\D/g, "")}`}
+                >
+                  <InlineStack gap="300" blockAlign="center">
+                    {c.image && (
+                      <div style={{ width: 40, height: 40, borderRadius: 6, overflow: "hidden", flexShrink: 0, border: "1px solid #e5e7eb" }}>
+                        <img src={c.image} alt={c.title} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                      </div>
+                    )}
+                    <BlockStack gap="050">
+                      <Text as="span" variant="bodyMd" fontWeight="medium">{c.title}</Text>
+                      <Text as="span" variant="bodySm" tone="subdued">{c.productsCount} product{c.productsCount !== 1 ? "s" : ""}</Text>
+                    </BlockStack>
+                  </InlineStack>
+                </button>
+              </Box>
+            ))}
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
     </AdminLayout>
   );
 }
