@@ -1,0 +1,31 @@
+name = "SiGNL Bundle Builder"
+
+# ─── Replace the value below with your Shopify API key (Client ID) ───────────
+# Found in your Partner Dashboard → Apps → SiGNL Bundle Builder → App setup
+client_id = "YOUR_SHOPIFY_API_KEY"
+
+# ─── Replace the value below with your public app URL ────────────────────────
+# e.g. https://signl-bundle-builder.replit.app  (no trailing slash)
+application_url = "YOUR_SHOPIFY_APP_URL"
+
+embedded = true
+
+[access_scopes]
+  scopes = "read_products,write_products,read_orders,write_discounts,read_draft_orders,write_draft_orders"
+
+[auth]
+  redirect_urls = [
+    "YOUR_SHOPIFY_APP_URL/api/auth/callback",
+    "YOUR_SHOPIFY_APP_URL/auth/callback",
+  ]
+
+[webhooks]
+  api_version = "2024-04"
+
+[pos]
+  embedded = false
+
+# ─── Extensions are auto-discovered from the extensions/ directory ─────────────
+# Both extensions/bundle-picker/ and extensions/bundle-discount/ each contain
+# their own shopify.extension.toml which the CLI reads automatically.
+# No need to list them here — running `shopify app deploy` will find them.
