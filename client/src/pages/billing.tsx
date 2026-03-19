@@ -135,10 +135,9 @@ function PlanCard({ tier, currentTier, isActive, onSubscribe, subscribing, subsc
 
   let ctaLabel = `Subscribe to ${plan.label}`;
   if (isCurrent) ctaLabel = "Go to Bundles";
-  else if (isOtherActivePlan) ctaLabel = "Manage in Shopify Admin";
   else if (tier === "free") ctaLabel = "Continue on Free";
 
-  const ctaVariant: "primary" | "secondary" = isCurrent || tier === "free" || isOtherActivePlan ? "secondary" : "primary";
+  const ctaVariant: "primary" | "secondary" = isCurrent || tier === "free" ? "secondary" : "primary";
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -213,23 +212,28 @@ function PlanCard({ tier, currentTier, isActive, onSubscribe, subscribing, subsc
           </BlockStack>
 
           <Box paddingBlockStart="400">
-            <Button
-              variant={ctaVariant}
-              size="large"
-              fullWidth
-              disabled={isOtherActivePlan}
-              onClick={() => {
-                if (isCurrent || tier === "free") {
-                  onGoToBundles();
-                } else if (!isOtherActivePlan) {
-                  onSubscribe(tier);
-                }
-              }}
-              loading={isPending}
-              data-testid={`button-subscribe-${tier}`}
-            >
-              {ctaLabel}
-            </Button>
+            {isOtherActivePlan ? (
+              <Text as="p" variant="bodySm" tone="subdued" alignment="center" data-testid={`text-plan-inactive-${tier}`}>
+                Manage your subscription in Shopify Admin under Apps &amp; sales channels.
+              </Text>
+            ) : (
+              <Button
+                variant={ctaVariant}
+                size="large"
+                fullWidth
+                onClick={() => {
+                  if (isCurrent || tier === "free") {
+                    onGoToBundles();
+                  } else {
+                    onSubscribe(tier);
+                  }
+                }}
+                loading={isPending}
+                data-testid={`button-subscribe-${tier}`}
+              >
+                {ctaLabel}
+              </Button>
+            )}
           </Box>
         </BlockStack>
       </Card>

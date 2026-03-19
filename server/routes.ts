@@ -942,7 +942,7 @@ export async function registerRoutes(
         const rawPlan = (req.query.plan as string) || "essential";
         const planTier: PlanTier = rawPlan === "pro" ? "pro" : "essential";
         const host = (req.query.host as string) || "";
-        const returnUrl = `${getAppUrl()}/billing/return?shop=${encodeURIComponent(shop)}&host=${encodeURIComponent(host)}&plan=${planTier}`;
+        const returnUrl = `${getAppUrl()}/billing/return?shop=${encodeURIComponent(shop)}&host=${encodeURIComponent(host)}`;
         const confirmationUrl = await createAppSubscription(shopify, session, returnUrl, planTier);
         res.json({ confirmationUrl });
       } catch (err: unknown) {
@@ -956,8 +956,6 @@ export async function registerRoutes(
       const shop = req.query.shop as string | undefined;
       const host = req.query.host as string | undefined;
       const chargeId = req.query.charge_id as string | undefined;
-      const rawPlan = (req.query.plan as string) || "essential";
-      const returnPlanTier: PlanTier = rawPlan === "pro" ? "pro" : "essential";
 
       if (!shop) {
         res.status(400).send("Missing shop parameter");
@@ -984,13 +982,13 @@ export async function registerRoutes(
           res.status(401).send("No active session for shop");
           return;
         }
-        const status = await verifyAppSubscription(shopify, session, chargeId, returnPlanTier);
-        log(`Billing return for ${shop}: charge ${chargeId} plan=${returnPlanTier} status=${status}`);
+        const status = await verifyAppSubscription(shopify, session, chargeId);
+        log(`Billing return for ${shop}: charge ${chargeId} status=${status}`);
 
         if (status === "active" || status === "pending") {
           const redirectUrl = host
-            ? `/?shop=${shop}&host=${host}`
-            : `/?shop=${shop}`;
+            ? `/billing?shop=${shop}&host=${host}&billing=${status}`
+            : `/billing?shop=${shop}&billing=${status}`;
           res.redirect(redirectUrl);
         } else {
           const exitUrl = decodeShopifyHost(host, shop);

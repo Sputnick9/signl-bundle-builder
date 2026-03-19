@@ -282,7 +282,6 @@ export async function verifyAppSubscription(
   shopifyInstance: NonNullable<import("./shopify").GetShopifyReturn>,
   session: import("@shopify/shopify-api").Session,
   chargeId: string,
-  planTier: PlanTier = "essential"
 ): Promise<string> {
   const client = new shopifyInstance.clients.Graphql({ session });
 
@@ -293,6 +292,7 @@ export async function verifyAppSubscription(
           ... on AppSubscription {
             id
             status
+            name
           }
         }
       }`,
@@ -312,7 +312,12 @@ export async function verifyAppSubscription(
   }
 
   const status = (node.status as string).toLowerCase();
-  await upsertSubscription(session.shop, chargeId, status, planTier);
+  const subName = (node.name as string) ?? "";
+  let tier: PlanTier = "essential";
+  if (subName.toLowerCase().includes("pro")) tier = "pro";
+  else if (subName.toLowerCase().includes("essential")) tier = "essential";
+  log(`verifyAppSubscription: chargeId=${chargeId} name="${subName}" → tier=${tier} status=${status}`);
+  await upsertSubscription(session.shop, chargeId, status, tier);
   return status;
 }
 
