@@ -48,7 +48,7 @@ integrations = ["github:1.0.0"]
 [userenv]
 
 [userenv.shared]
-VITE_SHOPIFY_API_KEY = ""
+VITE_SHOPIFY_API_KEY = " f0bbc459e974a73eea790db64092a96f"
 
 [postMerge]
 path = "scripts/post-merge.sh"
