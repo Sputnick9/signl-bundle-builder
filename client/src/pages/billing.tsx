@@ -130,7 +130,8 @@ const PLAN_DISPLAY: Record<PlanTier, { label: string; tagline: string; price: st
 function PlanCard({ tier, currentTier, isActive, onSubscribe, subscribing, subscribingTier, onGoToBundles }: PlanCardProps) {
   const plan = PLAN_DISPLAY[tier];
   const isCurrent = currentTier === tier && isActive;
-  const isOtherActivePlan = isActive && !isCurrent;
+  const isPaidActive = isActive && currentTier !== "free";
+  const isOtherActivePlan = isPaidActive && !isCurrent;
   const isPending = subscribingTier === tier && subscribing;
 
   let ctaLabel = `Subscribe to ${plan.label}`;
