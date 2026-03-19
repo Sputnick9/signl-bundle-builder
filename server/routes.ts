@@ -1114,9 +1114,10 @@ export async function registerRoutes(
     setCorsStorefront(res);
     const shop = req.query.shop as string | undefined;
     const productId = req.query.productId as string | undefined;
+    const bundleId = req.query.bundleId as string | undefined;
 
-    if (!shop || !productId) {
-      res.status(400).json({ error: "Missing shop or productId" });
+    if (!shop || (!productId && !bundleId)) {
+      res.status(400).json({ error: "Missing shop and either productId or bundleId" });
       return;
     }
     if (!/^[a-zA-Z0-9-]+\.myshopify\.com$/.test(shop)) {
@@ -1124,7 +1125,22 @@ export async function registerRoutes(
       return;
     }
     try {
-      const result = await getBundlesForProduct(shop, productId);
+      let result;
+      if (bundleId) {
+        if (!/^\d+$/.test(bundleId)) {
+          res.status(400).json({ error: "Invalid bundleId: must be a positive integer" });
+          return;
+        }
+        const numericId = parseInt(bundleId, 10);
+        if (isNaN(numericId)) {
+          res.status(400).json({ error: "Invalid bundleId" });
+          return;
+        }
+        const bundle = await getBundle(numericId, shop);
+        result = bundle && bundle.status === "active" ? [bundle] : [];
+      } else {
+        result = await getBundlesForProduct(shop, productId!);
+      }
       const shopifyInstance = getShopify();
 
       const enriched = await Promise.all(result.map(async (bundle) => {

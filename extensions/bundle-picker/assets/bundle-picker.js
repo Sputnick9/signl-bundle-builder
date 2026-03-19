@@ -52,6 +52,7 @@
     this.container = container;
     this.shop = container.dataset.shop || "";
     this.productId = container.dataset.productId || "";
+    this.bundleId = container.dataset.bundleId || "";
     this.appUrl = (container.dataset.appUrl || "").replace(/\/$/, "");
     this.currency = container.dataset.currency || "USD";
     this.selections = {};
@@ -80,9 +81,16 @@
       this.container.innerHTML = "";
       return;
     }
-    var url = this.appUrl + "/api/storefront/bundles"
-      + "?shop=" + encodeURIComponent(this.shop)
-      + "&productId=" + encodeURIComponent(this.productId);
+    var url;
+    if (this.bundleId) {
+      url = this.appUrl + "/api/storefront/bundles"
+        + "?shop=" + encodeURIComponent(this.shop)
+        + "&bundleId=" + encodeURIComponent(this.bundleId);
+    } else {
+      url = this.appUrl + "/api/storefront/bundles"
+        + "?shop=" + encodeURIComponent(this.shop)
+        + "&productId=" + encodeURIComponent(this.productId);
+    }
     fetch(url)
       .then(function (r) {
         if (!r.ok) throw new Error("HTTP " + r.status);
