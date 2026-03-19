@@ -58,7 +58,7 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
 
 export interface PlanFeatures {
   planTier: PlanTier;
-  maxBundles: number | null;
+  maxActiveBundles: number | null;
   cssAccess: boolean;
   advancedAnalytics: boolean;
   unlimitedSales: boolean;
@@ -112,7 +112,7 @@ export function getPlanFeatures(tier: PlanTier): PlanFeatures {
   const plan = PLANS[tier];
   return {
     planTier: tier,
-    maxBundles: plan.maxBundles,
+    maxActiveBundles: plan.maxBundles,
     cssAccess: plan.cssAccess,
     advancedAnalytics: plan.advancedAnalytics,
     unlimitedSales: plan.unlimitedSales,

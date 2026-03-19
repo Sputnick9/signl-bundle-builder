@@ -130,13 +130,15 @@ const PLAN_DISPLAY: Record<PlanTier, { label: string; tagline: string; price: st
 function PlanCard({ tier, currentTier, isActive, onSubscribe, subscribing, subscribingTier, onGoToBundles }: PlanCardProps) {
   const plan = PLAN_DISPLAY[tier];
   const isCurrent = currentTier === tier && isActive;
+  const isOtherActivePlan = isActive && !isCurrent;
   const isPending = subscribingTier === tier && subscribing;
 
   let ctaLabel = `Subscribe to ${plan.label}`;
   if (isCurrent) ctaLabel = "Go to Bundles";
+  else if (isOtherActivePlan) ctaLabel = "Manage in Shopify Admin";
   else if (tier === "free") ctaLabel = "Continue on Free";
 
-  const ctaVariant: "primary" | "secondary" = isCurrent || tier === "free" ? "secondary" : "primary";
+  const ctaVariant: "primary" | "secondary" = isCurrent || tier === "free" || isOtherActivePlan ? "secondary" : "primary";
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -215,12 +217,11 @@ function PlanCard({ tier, currentTier, isActive, onSubscribe, subscribing, subsc
               variant={ctaVariant}
               size="large"
               fullWidth
+              disabled={isOtherActivePlan}
               onClick={() => {
-                if (isCurrent) {
+                if (isCurrent || tier === "free") {
                   onGoToBundles();
-                } else if (tier === "free") {
-                  onGoToBundles();
-                } else {
+                } else if (!isOtherActivePlan) {
                   onSubscribe(tier);
                 }
               }}
