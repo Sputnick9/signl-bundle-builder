@@ -137,59 +137,75 @@ function PlanCard({ tier, currentTier, isActive, onSubscribe, subscribing, subsc
   const ctaVariant: "primary" | "secondary" = isCurrent || tier === "free" ? "secondary" : "primary";
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      {plan.popular && (
-        <Box
-          background="bg-fill-brand"
-          paddingInline="400"
-          paddingBlock="200"
-        >
-          <InlineStack align="center">
-            <Text as="p" variant="bodySm" fontWeight="semibold" tone="text-inverse">
-              Most Popular
-            </Text>
-          </InlineStack>
-        </Box>
+    <div style={{
+      display: "flex",
+      flexDirection: "column",
+      height: "100%",
+      borderRadius: "var(--p-border-radius-300)",
+      boxShadow: "var(--p-shadow-100)",
+      backgroundColor: "var(--p-color-bg-surface)",
+      overflow: "hidden",
+      border: plan.popular ? "2px solid var(--p-color-bg-fill-brand)" : "1px solid var(--p-color-border)",
+    }}>
+      {plan.popular ? (
+        <div style={{
+          backgroundColor: "var(--p-color-bg-fill-brand)",
+          padding: "8px 16px",
+          textAlign: "center",
+        }}>
+          <Text as="p" variant="bodySm" fontWeight="semibold" tone="text-inverse">
+            Most Popular
+          </Text>
+        </div>
+      ) : (
+        <div style={{ height: "36px" }} />
       )}
-      <Card>
-        <BlockStack gap="500">
-          <BlockStack gap="200">
-            <InlineStack align="space-between" blockAlign="start">
-              <Text as="h2" variant="headingLg" fontWeight="bold">
-                {plan.label}
-              </Text>
-              {isCurrent && (
-                <Badge tone="success" data-testid={`badge-current-plan-${tier}`}>
-                  Current Plan
-                </Badge>
-              )}
-            </InlineStack>
-            <Text as="p" tone="subdued" variant="bodySm">
-              {plan.tagline}
-            </Text>
-          </BlockStack>
 
-          <BlockStack gap="100">
-            <InlineStack gap="100" blockAlign="baseline">
-              <Text as="p" variant="heading2xl" fontWeight="bold">
-                ${plan.price}
-              </Text>
-              <Text as="p" tone="subdued">/month</Text>
-            </InlineStack>
-            {plan.trial && (
-              <Badge tone="info" data-testid={`badge-trial-${tier}`}>
-                {plan.trial}
+      <div style={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        padding: "var(--p-space-500)",
+        gap: "var(--p-space-500)",
+      }}>
+        <BlockStack gap="200">
+          <InlineStack align="space-between" blockAlign="start">
+            <Text as="h2" variant="headingLg" fontWeight="bold">
+              {plan.label}
+            </Text>
+            {isCurrent && (
+              <Badge tone="success" data-testid={`badge-current-plan-${tier}`}>
+                Current Plan
               </Badge>
             )}
-            {tier === "free" && (
-              <Text as="p" variant="bodySm" tone="subdued">
-                Free to install, forever
-              </Text>
-            )}
-          </BlockStack>
+          </InlineStack>
+          <Text as="p" tone="subdued" variant="bodySm">
+            {plan.tagline}
+          </Text>
+        </BlockStack>
 
-          <Divider />
+        <BlockStack gap="100">
+          <InlineStack gap="100" blockAlign="baseline">
+            <Text as="p" variant="heading2xl" fontWeight="bold">
+              ${plan.price}
+            </Text>
+            <Text as="p" tone="subdued">/month</Text>
+          </InlineStack>
+          {plan.trial && (
+            <Badge tone="info" data-testid={`badge-trial-${tier}`}>
+              {plan.trial}
+            </Badge>
+          )}
+          {tier === "free" && (
+            <Text as="p" variant="bodySm" tone="subdued">
+              Free to install, forever
+            </Text>
+          )}
+        </BlockStack>
 
+        <Divider />
+
+        <div style={{ flex: 1 }}>
           <BlockStack gap="300">
             <Text as="p" variant="bodySm" fontWeight="semibold" tone="subdued">
               FEATURES
@@ -207,33 +223,33 @@ function PlanCard({ tier, currentTier, isActive, onSubscribe, subscribing, subsc
               ))}
             </BlockStack>
           </BlockStack>
+        </div>
 
-          <Box paddingBlockStart="400">
-            {isOtherActivePlan ? (
-              <Text as="p" variant="bodySm" tone="subdued" alignment="center" data-testid={`text-plan-inactive-${tier}`}>
-                Manage your subscription in Shopify Admin under Apps &amp; sales channels.
-              </Text>
-            ) : (
-              <Button
-                variant={ctaVariant}
-                size="large"
-                fullWidth
-                onClick={() => {
-                  if (isCurrent || tier === "free") {
-                    onGoToBundles();
-                  } else {
-                    onSubscribe(tier);
-                  }
-                }}
-                loading={isPending}
-                data-testid={`button-subscribe-${tier}`}
-              >
-                {ctaLabel}
-              </Button>
-            )}
-          </Box>
-        </BlockStack>
-      </Card>
+        <div style={{ paddingTop: "var(--p-space-400)" }}>
+          {isOtherActivePlan ? (
+            <Text as="p" variant="bodySm" tone="subdued" alignment="center" data-testid={`text-plan-inactive-${tier}`}>
+              Manage your subscription in Shopify Admin under Apps &amp; sales channels.
+            </Text>
+          ) : (
+            <Button
+              variant={ctaVariant}
+              size="large"
+              fullWidth
+              onClick={() => {
+                if (isCurrent || tier === "free") {
+                  onGoToBundles();
+                } else {
+                  onSubscribe(tier);
+                }
+              }}
+              loading={isPending}
+              data-testid={`button-subscribe-${tier}`}
+            >
+              {ctaLabel}
+            </Button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -355,7 +371,7 @@ export default function BillingPage() {
             </Text>
           </BlockStack>
 
-          <InlineGrid columns={3} gap="400" alignItems="start">
+          <InlineGrid columns={3} gap="400" alignItems="stretch">
             {(["free", "essential", "pro"] as PlanTier[]).map((tier) => (
               <PlanCard
                 key={tier}
