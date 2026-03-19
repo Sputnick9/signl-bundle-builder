@@ -1,5 +1,5 @@
 import "@shopify/polaris/build/esm/styles.css";
-import { AppProvider, Frame, Navigation, TopBar } from "@shopify/polaris";
+import { AppProvider, Frame, Navigation, TopBar, Text, Box } from "@shopify/polaris";
 import type { LinkLikeComponentProps } from "@shopify/polaris/build/ts/src/utilities/link/types";
 import enTranslations from "@shopify/polaris/locales/en.json";
 import {
@@ -17,6 +17,8 @@ interface AdminLayoutProps {
   children: React.ReactNode;
 }
 
+const APP_NAME = "SiGNL Bundle Builder";
+
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const [location] = useLocation();
   const [mobileNavActive, setMobileNavActive] = useState(false);
@@ -26,10 +28,19 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     []
   );
 
+  const contextControl = (
+    <Box paddingInlineStart="400">
+      <Text as="p" variant="headingSm" fontWeight="semibold">
+        {APP_NAME}
+      </Text>
+    </Box>
+  );
+
   const topBarMarkup = (
     <TopBar
       showNavigationToggle
       onNavigationToggle={toggleMobileNav}
+      contextControl={contextControl}
     />
   );
 

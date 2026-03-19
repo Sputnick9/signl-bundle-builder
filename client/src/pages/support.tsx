@@ -52,7 +52,6 @@ export default function SupportPage() {
             tone="info"
             action={{
               content: "Email support",
-              icon: EmailIcon,
               url: "mailto:support@signl.app",
               external: true,
             }}

@@ -421,19 +421,18 @@ export default function AdminBundles() {
           <Card>
             <BlockStack gap="0">
               <Box paddingBlockEnd="400">
-                <Button
-                  variant="plain"
-                  onClick={() => setHowToOpen((v) => !v)}
-                  ariaExpanded={howToOpen}
-                  ariaControls="how-to-collapsible"
-                  data-testid="button-toggle-howto"
-                  fullWidth
-                >
-                  <InlineStack align="space-between" blockAlign="center">
-                    <Text as="h2" variant="headingMd">How to Build a Bundle</Text>
-                    <Text as="span" tone="subdued">{howToOpen ? "▲ Collapse" : "▼ Expand"}</Text>
-                  </InlineStack>
-                </Button>
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text as="h2" variant="headingMd">How to Build a Bundle</Text>
+                  <Button
+                    variant="plain"
+                    onClick={() => setHowToOpen((v) => !v)}
+                    ariaExpanded={howToOpen}
+                    ariaControls="how-to-collapsible"
+                    data-testid="button-toggle-howto"
+                  >
+                    {howToOpen ? "▲ Collapse" : "▼ Expand"}
+                  </Button>
+                </InlineStack>
               </Box>
               <Collapsible
                 open={howToOpen}
@@ -472,19 +471,18 @@ export default function AdminBundles() {
           <Card>
             <BlockStack gap="0">
               <Box paddingBlockEnd="400">
-                <Button
-                  variant="plain"
-                  onClick={() => setFaqOpen((v) => !v)}
-                  ariaExpanded={faqOpen}
-                  ariaControls="faq-collapsible"
-                  data-testid="button-toggle-faq"
-                  fullWidth
-                >
-                  <InlineStack align="space-between" blockAlign="center">
-                    <Text as="h2" variant="headingMd">Frequently Asked Questions</Text>
-                    <Text as="span" tone="subdued">{faqOpen ? "▲ Collapse" : "▼ Expand"}</Text>
-                  </InlineStack>
-                </Button>
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text as="h2" variant="headingMd">Frequently Asked Questions</Text>
+                  <Button
+                    variant="plain"
+                    onClick={() => setFaqOpen((v) => !v)}
+                    ariaExpanded={faqOpen}
+                    ariaControls="faq-collapsible"
+                    data-testid="button-toggle-faq"
+                  >
+                    {faqOpen ? "▲ Collapse" : "▼ Expand"}
+                  </Button>
+                </InlineStack>
               </Box>
               <Collapsible
                 open={faqOpen}
