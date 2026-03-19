@@ -21,33 +21,29 @@ A full Shopify embedded app that allows merchants to create and manage product b
    - Full CRUD REST API with shop-scoped tenant isolation
    - 3-step Polaris wizard: Details → Slots → Discount Tiers
    - Shopify ResourcePicker integration + manual product entry fallback
-   - App Bridge nav menu (`<ui-nav-menu>`) for embedded sidebar navigation
 3. **Task 3 — Theme App Extension** ✅ COMPLETE
    - `extensions/bundle-picker/` directory with `shopify.extension.toml`
    - `blocks/bundle-picker.liquid` — Shopify OS 2.0 App Block (target: section)
-   - `assets/bundle-picker.js` — slot-based picker (fetches API, variant picker modal, AJAX cart); adds `_bundleId`/`_discountTiers`/`_discountType` cart line properties for Function
+   - `assets/bundle-picker.js` — slot-based picker (fetches API, variant picker modal, AJAX cart)
    - `assets/bundle-picker.css` — scoped BEM-style CSS matching `#2A9D8F` brand
-   - `GET /api/storefront/bundles` — public CORS endpoint with server-side variant enrichment (5-min cache); no open Admin API proxy
-   - `getBundlesForProduct()` in `server/bundle-db.ts` — DB query using JOIN across slots
+   - `GET /api/storefront/bundles` — public CORS endpoint with server-side variant enrichment
 4. **Task 4 — Shopify Functions (Real Discounts)** ✅ COMPLETE
    - `extensions/bundle-discount/` — Shopify Function extension (type: `product_discounts`)
-   - `shopify.extension.toml` — Shopify CLI 3.x manifest (api_version 2024-04)
-   - `input.graphql` — queries cart lines + all attributes
-   - `src/run.js` — pure JS function: groups lines by `_bundleId`, selects best discount tier by total qty, returns `productVariant` targets with percentage/fixed discount; standalone items unaffected
-   - `esbuild.config.mjs` + `package.json` — build toolchain (esbuild bundle → javy WASM compile)
-   - `server/routes.ts`: `ensureAutomaticDiscount()` helper registers one automatic discount per shop via `discountAutomaticAppCreate` GraphQL mutation (idempotent — checks first)
    - `GET/POST/DELETE /api/shop/discount` — manage discount registration per shop
    - Auto-registers discount in OAuth callback when `SHOPIFY_FUNCTION_ID` env var is set
-   - Admin home: `DiscountFunctionCard` shows active/inactive status; Register/Deactivate buttons; "How it works" explainer
 5. **Task 5 — Billing & Subscriptions** ✅ COMPLETE
-   - `server/billing.ts` — Shopify Billing API: `createAppSubscription()`, `verifyAppSubscription()`, `getSubscriptionStatus()`, `upsertSubscription()`
-   - `shared/schema.ts`: `shop_subscriptions` table (shop, chargeId, status, trialDays, planName, planPrice, activatedAt, cancelledAt)
-   - `GET /api/billing/status` — returns hasSubscription, status, plan details (shopifyAuth middleware)
-   - `POST /api/billing/subscribe` — calls `appSubscriptionCreate` GQL mutation; returns confirmationUrl for redirect
-   - `GET /billing/return` — Shopify redirect-back URL; verifies charge via `node` GQL query; redirects with status param
-   - OAuth callback now checks subscription status and redirects new installs to `/billing` if no active subscription
-   - `client/src/pages/billing.tsx` — Polaris pricing page: plan card ($19.99/month, 7-day trial), feature list, FAQ, subscription confirmation states
-   - `client/src/pages/admin-home.tsx` — `BillingCard` component shows subscription status badge + subscribe/manage CTA
+   - `server/billing.ts` — Shopify Billing API integration
+   - `GET /api/billing/status`, `POST /api/billing/subscribe`, `GET /billing/return`
+   - OAuth callback redirects new installs to `/billing` if no active subscription
+   - `client/src/pages/billing.tsx` — Polaris pricing page ($19.99/month, 7-day trial)
+6. **Task 6 — Navigation & App Shell Revamp** ✅ COMPLETE
+   - `client/src/components/admin-layout.tsx` — Polaris Frame + Navigation with 5 items: Bundles, Analytics, Settings, Pricing, Support (Dashboard removed)
+   - `NavMenu` from `@shopify/app-bridge-react` registers nav in Shopify Admin sidebar
+   - `/` now redirects to `/admin/bundles` (no more Dashboard route)
+   - `client/src/pages/admin-bundles.tsx` — Rebuilt as the app hub: stat cards (Total/Active Bundles), Create/Preview buttons, bundle list, Discount Function card, collapsible How-to Guide, collapsible FAQ
+   - `client/src/pages/analytics-stub.tsx` — Analytics page (coming soon stub) at `/analytics`
+   - `client/src/pages/settings-stub.tsx` — Settings page (coming soon stub) at `/settings`
+   - `client/src/pages/support.tsx` — Support page at `/support` with contact info, resources, FAQ
 
 ## Database Schema
 
@@ -143,12 +139,15 @@ server/routes.ts                    - Express routes: OAuth, webhooks, bundle AP
 server/index.ts                     - Express server + CSP headers
 client/src/App.tsx                  - wouter Router: admin pages
 client/src/pages/
-  admin-home.tsx                    - Polaris dashboard home
-  admin-bundles.tsx                 - Bundle list + delete table
+  admin-bundles.tsx                 - Bundles hub: stats, create/preview, list, how-to, FAQ
   admin-bundle-form.tsx             - 3-step create/edit wizard
+  analytics-stub.tsx                - Analytics page (coming soon)
+  settings-stub.tsx                 - Settings page (coming soon)
+  support.tsx                       - Support page with contact, resources, FAQ
+  billing.tsx                       - Subscription pricing page
+  admin-home.tsx                    - Legacy dashboard (no longer routed, kept for reference)
 client/src/components/
-  admin-layout.tsx                  - Polaris AppProvider + Frame shell
-client/index.html                   - App Bridge ui-nav-menu (Dashboard + Bundles links)
+  admin-layout.tsx                  - Polaris Frame shell + NavMenu (5 nav items)
 extensions/bundle-picker/
   shopify.extension.toml            - Shopify CLI 3.x extension manifest
   blocks/bundle-picker.liquid       - OS 2.0 App Block (schema + data attributes)

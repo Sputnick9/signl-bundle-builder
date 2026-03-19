@@ -96,9 +96,9 @@ export default function BillingPage() {
               title="Subscription Active"
               tone="success"
               action={{
-                content: "Go to Dashboard",
+                content: "Go to Bundles",
                 onAction: () => {
-                  navigate(host ? `/?shop=${shop}&host=${host}` : `/?shop=${shop}`);
+                  navigate(host ? `/admin/bundles?shop=${shop}&host=${host}` : `/admin/bundles?shop=${shop}`);
                 },
               }}
             >
@@ -130,10 +130,10 @@ export default function BillingPage() {
                 <Button
                   variant="primary"
                   size="large"
-                  onClick={() => navigate(host ? `/?shop=${shop}&host=${host}` : `/?shop=${shop}`)}
+                  onClick={() => navigate(host ? `/admin/bundles?shop=${shop}&host=${host}` : `/admin/bundles?shop=${shop}`)}
                   data-testid="button-go-to-dashboard"
                 >
-                  Go to Dashboard
+                  Go to Bundles
                 </Button>
               </BlockStack>
             </Card>

@@ -2,7 +2,14 @@ import "@shopify/polaris/build/esm/styles.css";
 import { AppProvider, Frame, Navigation, TopBar } from "@shopify/polaris";
 import type { LinkLikeComponentProps } from "@shopify/polaris/build/ts/src/utilities/link/types";
 import enTranslations from "@shopify/polaris/locales/en.json";
-import { HomeIcon, ProductIcon, SettingsIcon } from "@shopify/polaris-icons";
+import {
+  ProductIcon,
+  ChartVerticalIcon,
+  SettingsIcon,
+  PaymentIcon,
+  QuestionCircleIcon,
+} from "@shopify/polaris-icons";
+import { NavMenu } from "@shopify/app-bridge-react";
 import { useLocation, Link } from "wouter";
 import { useState, useCallback } from "react";
 
@@ -31,28 +38,34 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       <Navigation.Section
         items={[
           {
-            url: "/",
-            label: "Dashboard",
-            icon: HomeIcon,
-            selected: location === "/",
-          },
-          {
             url: "/admin/bundles",
             label: "Bundles",
             icon: ProductIcon,
-            selected: location.startsWith("/admin/bundles"),
+            selected: location === "/admin/bundles" || location.startsWith("/admin/bundles"),
           },
-        ]}
-      />
-      <Navigation.Section
-        title="Settings"
-        items={[
           {
-            url: "/admin/settings",
-            label: "App Settings",
+            url: "/analytics",
+            label: "Analytics",
+            icon: ChartVerticalIcon,
+            selected: location === "/analytics",
+          },
+          {
+            url: "/settings",
+            label: "Settings",
             icon: SettingsIcon,
-            selected: location === "/admin/settings",
-            disabled: true,
+            selected: location === "/settings",
+          },
+          {
+            url: "/billing",
+            label: "Pricing",
+            icon: PaymentIcon,
+            selected: location === "/billing",
+          },
+          {
+            url: "/support",
+            label: "Support",
+            icon: QuestionCircleIcon,
+            selected: location === "/support",
           },
         ]}
       />
@@ -61,6 +74,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   return (
     <AppProvider i18n={enTranslations} linkComponent={WouterLink}>
+      <NavMenu>
+        <a href="/admin/bundles" rel="home">Bundles</a>
+        <a href="/analytics">Analytics</a>
+        <a href="/settings">Settings</a>
+        <a href="/billing">Pricing</a>
+        <a href="/support">Support</a>
+      </NavMenu>
       <Frame
         topBar={topBarMarkup}
         navigation={navigationMarkup}
