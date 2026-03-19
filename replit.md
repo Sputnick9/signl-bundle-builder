@@ -145,7 +145,6 @@ client/src/pages/
   settings-stub.tsx                 - Settings page (coming soon)
   support.tsx                       - Support page with contact, resources, FAQ
   billing.tsx                       - Subscription pricing page
-  admin-home.tsx                    - Legacy dashboard (no longer routed, kept for reference)
 client/src/components/
   admin-layout.tsx                  - Polaris Frame shell + NavMenu (5 nav items)
 extensions/bundle-picker/
