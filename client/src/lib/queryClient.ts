@@ -37,20 +37,6 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
-function handle402(res: Response) {
-  if (res.status === 402) {
-    const params = new URLSearchParams(window.location.search);
-    const shop = params.get("shop") ?? "";
-    const host = params.get("host") ?? "";
-    const billingUrl = `/billing${shop ? `?shop=${encodeURIComponent(shop)}` : ""}${host ? `${shop ? "&" : "?"}host=${encodeURIComponent(host)}` : ""}`;
-    if (typeof window !== "undefined") {
-      window.location.href = billingUrl;
-    }
-    return true;
-  }
-  return false;
-}
-
 export async function apiRequest(
   method: string,
   url: string,
@@ -64,8 +50,10 @@ export async function apiRequest(
     credentials: "include",
   });
 
-  if (handle402(res)) {
-    return res;
+  if (res.status === 402) {
+    throw new Error(
+      "Subscription required. Please go to the Billing page to activate your plan."
+    );
   }
 
   await throwIfResNotOk(res);
@@ -89,7 +77,7 @@ export const getQueryFn: <T>(options: {
       return null;
     }
 
-    if (handle402(res)) {
+    if (res.status === 402) {
       return null;
     }
 

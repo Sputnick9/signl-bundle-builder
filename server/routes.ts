@@ -216,6 +216,12 @@ function makeRequireActiveSubscription() {
             next();
             return;
           }
+          if (localStatus.status === "none") {
+            await upsertFreeSubscription(shop);
+            log(`Auto-enrolled ${shop} on free tier (missing subscription record)`);
+            next();
+            return;
+          }
         } catch (liveErr) {
           log(`Billing live check for ${shop} failed, falling back to DB: ${liveErr instanceof Error ? liveErr.message : String(liveErr)}`);
           const localStatus = await getSubscriptionStatus(shop);
@@ -223,10 +229,22 @@ function makeRequireActiveSubscription() {
             next();
             return;
           }
+          if (localStatus.status === "none") {
+            await upsertFreeSubscription(shop);
+            log(`Auto-enrolled ${shop} on free tier (missing subscription record, fallback path)`);
+            next();
+            return;
+          }
         }
       } else {
         const localStatus = await getSubscriptionStatus(shop);
         if (localStatus.hasSubscription) {
+          next();
+          return;
+        }
+        if (localStatus.status === "none") {
+          await upsertFreeSubscription(shop);
+          log(`Auto-enrolled ${shop} on free tier (no session, missing subscription record)`);
           next();
           return;
         }

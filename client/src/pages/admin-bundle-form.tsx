@@ -54,6 +54,15 @@ function normalizeVariantGid(value: string): string {
   return v;
 }
 
+function normalizeCollectionGid(value: string): string {
+  const v = value.trim();
+  if (/^\d+$/.test(v)) return `gid://shopify/Collection/${v}`;
+  if (v.startsWith("gid://")) return v;
+  const urlMatch = v.match(/\/collections\/(\d+)/);
+  if (urlMatch) return `gid://shopify/Collection/${urlMatch[1]}`;
+  return v;
+}
+
 const defaultTiers: DiscountTierRule[] = [
   { minQty: 2, discountValue: 10 },
   { minQty: 3, discountValue: 15 },
@@ -100,6 +109,8 @@ export default function AdminBundleForm() {
   const [step, setStep] = useState<StepIndex>(0);
   const pickerAvailable = isResourcePickerAvailable();
   const [collectionLoadingIdx, setCollectionLoadingIdx] = useState<number | null>(null);
+  const [collectionInputSlotIdx, setCollectionInputSlotIdx] = useState<number | null>(null);
+  const [collectionInputValue, setCollectionInputValue] = useState("");
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -387,6 +398,25 @@ export default function AdminBundleForm() {
     );
   }, []);
 
+  const submitCollectionInput = useCallback(
+    async (slotIdx: number) => {
+      const raw = collectionInputValue.trim();
+      if (!raw) return;
+      const collectionGid = normalizeCollectionGid(raw);
+      setSlots((prev) =>
+        prev.map((s, idx) =>
+          idx === slotIdx
+            ? { ...s, shopifyCollectionId: collectionGid, shopifyCollectionTitle: raw }
+            : s
+        )
+      );
+      setCollectionInputSlotIdx(null);
+      setCollectionInputValue("");
+      await fetchAndLoadCollectionProducts(slotIdx, collectionGid, raw);
+    },
+    [collectionInputValue, fetchAndLoadCollectionProducts]
+  );
+
   const allSlotsHaveProducts = slots.every((s) => s.products.length > 0 || !!s.shopifyCollectionId);
   const allSlotsHaveNames = slots.every((s) => s.name.trim().length > 0);
   const allSlotQtyValid = slots.every((s) => s.maxQty == null || s.maxQty >= s.minQty);
@@ -659,16 +689,21 @@ export default function AdminBundleForm() {
                             >
                               Re-sync products
                             </Button>
-                            {pickerAvailable && (
-                              <Button
-                                size="slim"
-                                variant="plain"
-                                onClick={() => pickCollectionFromShopify(slotIdx)}
-                                data-testid={`button-change-collection-${slotIdx}`}
-                              >
-                                Change collection
-                              </Button>
-                            )}
+                            <Button
+                              size="slim"
+                              variant="plain"
+                              onClick={() => {
+                                if (pickerAvailable) {
+                                  pickCollectionFromShopify(slotIdx);
+                                } else {
+                                  setCollectionInputSlotIdx(slotIdx);
+                                  setCollectionInputValue("");
+                                }
+                              }}
+                              data-testid={`button-change-collection-${slotIdx}`}
+                            >
+                              Change collection
+                            </Button>
                             <Button
                               size="slim"
                               variant="plain"
@@ -681,20 +716,25 @@ export default function AdminBundleForm() {
                           </>
                         ) : (
                           <>
-                            {pickerAvailable && (
-                              <Button
-                                size="slim"
-                                variant="primary"
-                                loading={collectionLoadingIdx === slotIdx}
-                                onClick={() => pickCollectionFromShopify(slotIdx)}
-                                data-testid={`button-browse-collections-${slotIdx}`}
-                              >
-                                Browse collections
-                              </Button>
-                            )}
                             <Button
                               size="slim"
-                              variant={pickerAvailable ? "plain" : undefined}
+                              variant="primary"
+                              loading={collectionLoadingIdx === slotIdx}
+                              onClick={() => {
+                                if (pickerAvailable) {
+                                  pickCollectionFromShopify(slotIdx);
+                                } else {
+                                  setCollectionInputSlotIdx(slotIdx);
+                                  setCollectionInputValue("");
+                                }
+                              }}
+                              data-testid={`button-browse-collections-${slotIdx}`}
+                            >
+                              Browse collections
+                            </Button>
+                            <Button
+                              size="slim"
+                              variant="plain"
                               onClick={() => addProductToSlot(slotIdx)}
                               data-testid={`button-add-product-${slotIdx}`}
                             >
@@ -705,7 +745,52 @@ export default function AdminBundleForm() {
                       </InlineStack>
                     </InlineStack>
 
-                    {slot.products.length === 0 && !slot.shopifyCollectionId && (
+                    {collectionInputSlotIdx === slotIdx && (
+                      <Box
+                        background="bg-surface-secondary"
+                        borderRadius="200"
+                        padding="300"
+                      >
+                        <BlockStack gap="200">
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            Paste your Shopify collection ID or admin URL
+                          </Text>
+                          <TextField
+                            label="Collection ID or URL"
+                            labelHidden
+                            value={collectionInputValue}
+                            onChange={setCollectionInputValue}
+                            placeholder="e.g. 123456789 or https://admin.shopify.com/store/.../collections/123456789"
+                            autoComplete="off"
+                            data-testid={`input-collection-id-${slotIdx}`}
+                          />
+                          <InlineStack gap="200">
+                            <Button
+                              size="slim"
+                              variant="primary"
+                              disabled={!collectionInputValue.trim()}
+                              onClick={() => submitCollectionInput(slotIdx)}
+                              data-testid={`button-submit-collection-id-${slotIdx}`}
+                            >
+                              Link collection
+                            </Button>
+                            <Button
+                              size="slim"
+                              variant="plain"
+                              onClick={() => {
+                                setCollectionInputSlotIdx(null);
+                                setCollectionInputValue("");
+                              }}
+                              data-testid={`button-cancel-collection-id-${slotIdx}`}
+                            >
+                              Cancel
+                            </Button>
+                          </InlineStack>
+                        </BlockStack>
+                      </Box>
+                    )}
+
+                    {slot.products.length === 0 && !slot.shopifyCollectionId && collectionInputSlotIdx !== slotIdx && (
                       <Text as="p" tone="subdued" alignment="center">
                         Link a Shopify collection to import its products automatically, or add products manually.
                       </Text>
