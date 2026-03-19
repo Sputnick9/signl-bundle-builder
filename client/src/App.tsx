@@ -8,7 +8,7 @@ import AdminBundleForm from "@/pages/admin-bundle-form";
 import BundleBuilder from "@/pages/bundle-builder";
 import BillingPage from "@/pages/billing";
 import SupportPage from "@/pages/support";
-import AnalyticsPage from "@/pages/analytics-stub";
+import AnalyticsPage from "@/pages/analytics";
 import SettingsPage from "@/pages/settings-stub";
 import NotFound from "@/pages/not-found";
 

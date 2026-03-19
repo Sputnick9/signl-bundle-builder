@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pgTable, text, boolean, timestamp, serial, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp, serial, integer, jsonb, index, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export const shopifySessions = pgTable("shopify_sessions", {
@@ -150,3 +150,38 @@ export const addToCartSchema = z.object({
 });
 
 export type AddToCartRequest = z.infer<typeof addToCartSchema>;
+
+export const bundleEventTypeEnum = pgEnum("bundle_event_type", ["view", "add_to_cart", "order"]);
+export const bundleEventTypeZodEnum = z.enum(["view", "add_to_cart", "order"]);
+export type BundleEventType = z.infer<typeof bundleEventTypeZodEnum>;
+
+export const bundleEvents = pgTable(
+  "bundle_events",
+  {
+    id: serial("id").primaryKey(),
+    shop: text("shop").notNull(),
+    bundleId: integer("bundle_id").notNull(),
+    eventType: bundleEventTypeEnum("event_type").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    shopBundleCreatedIdx: index("bundle_events_shop_bundle_created_idx").on(t.shop, t.bundleId, t.createdAt),
+  })
+);
+
+export type BundleEvent = typeof bundleEvents.$inferSelect;
+export type InsertBundleEvent = typeof bundleEvents.$inferInsert;
+
+export const insertBundleEventSchema = createInsertSchema(bundleEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
+export interface BundleAnalyticsStat {
+  bundleId: number;
+  bundleName: string;
+  views: number;
+  carts: number;
+  orders: number;
+  conversionRate: number;
+}

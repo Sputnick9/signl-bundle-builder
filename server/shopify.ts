@@ -152,6 +152,12 @@ export function getShopify() {
         callbackUrl: `${getAppUrl()}/api/webhooks/shop/redact`,
       },
     ],
+    ORDERS_PAID: [
+      {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: `${getAppUrl()}/api/webhooks/orders/paid`,
+      },
+    ],
   });
 
   return _shopify;

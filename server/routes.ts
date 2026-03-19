@@ -27,6 +27,9 @@ import {
 } from "./bundle-db";
 import type { SlotSeed } from "./bundle-db";
 import { z } from "zod";
+import { db } from "./db";
+import { bundleEvents, bundleEventTypeZodEnum } from "@shared/schema";
+import { eq, and, gte, sql as drizzleSql } from "drizzle-orm";
 
 const SHOPIFY_HOST_PATTERN = /^(admin\.shopify\.com|[a-z0-9][a-z0-9-]*\.myshopify\.com)(\/|$)/i;
 
@@ -463,6 +466,46 @@ export async function registerRoutes(
       res.status(200).send("OK");
     });
 
+    app.post("/api/webhooks/orders/paid", async (req: Request, res: Response) => {
+      const hmac = getHeaderString(req.headers["x-shopify-hmac-sha256"]);
+      const shop = getHeaderString(req.headers["x-shopify-shop-domain"]);
+      const rawBody = getRawBody(req);
+      if (!verifyWebhookHmac(rawBody, hmac)) {
+        log(`orders/paid: HMAC verification failed`);
+        res.status(401).send("HMAC verification failed");
+        return;
+      }
+      res.status(200).send("OK");
+
+      try {
+        const order = req.body as Record<string, unknown>;
+        const lineItems = (order.line_items as Array<Record<string, unknown>>) ?? [];
+        const bundleIdSet = new Set<number>();
+        for (const item of lineItems) {
+          const props = (item.properties as Array<{ name: string; value: string }>) ?? [];
+          for (const prop of props) {
+            if (prop.name === "_bundleId") {
+              const id = parseInt(prop.value, 10);
+              if (!isNaN(id) && id > 0) bundleIdSet.add(id);
+            }
+          }
+        }
+        if (bundleIdSet.size > 0 && shop) {
+          await Promise.all(
+            [...bundleIdSet].map((bundleId) =>
+              db.insert(bundleEvents).values({ shop, bundleId, eventType: "order" }).catch((e) => {
+                log(`orders/paid: failed to insert order event for bundle ${bundleId}: ${e}`);
+              })
+            )
+          );
+          log(`orders/paid: recorded ${bundleIdSet.size} order event(s) for shop ${shop}`);
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        log(`orders/paid processing error: ${msg}`);
+      }
+    });
+
     app.get("/api/auth/status", async (req: Request, res: Response) => {
       const rawShop = req.query.shop as string | undefined;
       const shop = rawShop ? (shopify.utils.sanitizeShop(rawShop, true) ?? null) : null;
@@ -884,6 +927,130 @@ export async function registerRoutes(
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       res.status(500).json({ error: msg });
+    }
+  });
+
+  /* ── Analytics endpoints ──────────────────────────────────────────────── */
+
+  /* POST /api/events — public, unauthenticated, rate-limited-ish via validation
+   * Accepts { shop, bundleId, eventType } from storefront widget */
+  const eventIngestSchema = z.object({
+    shop: z.string().regex(/^[a-zA-Z0-9-]+\.myshopify\.com$/),
+    bundleId: z.number().int().positive(),
+    eventType: bundleEventTypeZodEnum,
+  });
+
+  const eventRateMap = new Map<string, { count: number; resetAt: number }>();
+  const EVENT_RATE_LIMIT = 50;
+  const EVENT_RATE_WINDOW_MS = 60 * 1000;
+
+  function checkEventRateLimit(key: string): boolean {
+    const now = Date.now();
+    const entry = eventRateMap.get(key);
+    if (!entry || now > entry.resetAt) {
+      eventRateMap.set(key, { count: 1, resetAt: now + EVENT_RATE_WINDOW_MS });
+      return true;
+    }
+    if (entry.count >= EVENT_RATE_LIMIT) return false;
+    entry.count++;
+    return true;
+  }
+
+  app.options("/api/events", (_req: Request, res: Response) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.sendStatus(204);
+  });
+
+  app.post("/api/events", async (req: Request, res: Response) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    const parsed = eventIngestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid event data" });
+      return;
+    }
+    const { shop, bundleId, eventType } = parsed.data;
+    const rateLimitKey = `${shop}:${req.ip ?? "unknown"}`;
+    if (!checkEventRateLimit(rateLimitKey)) {
+      res.status(429).json({ error: "Rate limit exceeded" });
+      return;
+    }
+    try {
+      await db.insert(bundleEvents).values({ shop, bundleId, eventType });
+      res.status(201).json({ ok: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      log(`Event insert error: ${msg}`);
+      res.status(500).json({ error: "Failed to record event" });
+    }
+  });
+
+  /* GET /api/analytics?shop=&days=
+   * Protected by shopifyAuth + requireBilling
+   * Returns per-bundle stats aggregated from bundle_events */
+  app.get("/api/analytics", shopifyAuth, requireBilling, async (req: Request, res: Response) => {
+    const authedReq = req as AuthenticatedRequest;
+    const shop = resolveShop(authedReq);
+    if (!shop) {
+      res.status(401).json({ error: "Unauthorized: missing shop context" });
+      return;
+    }
+    const rawDays = parseInt((req.query.days as string) || "30", 10);
+    const days = [7, 30, 90].includes(rawDays) ? rawDays : 30;
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    try {
+      const rows = await db
+        .select({
+          bundleId: bundleEvents.bundleId,
+          eventType: bundleEvents.eventType,
+          count: drizzleSql<number>`cast(count(*) as integer)`,
+        })
+        .from(bundleEvents)
+        .where(and(eq(bundleEvents.shop, shop), gte(bundleEvents.createdAt, since)))
+        .groupBy(bundleEvents.bundleId, bundleEvents.eventType);
+
+      const bundleIds = [...new Set(rows.map((r) => r.bundleId))];
+
+      let bundleNames: Record<number, string> = {};
+      if (bundleIds.length > 0) {
+        const bundleRows = await listBundles(shop);
+        bundleRows.forEach((b) => { bundleNames[b.id] = b.name; });
+      }
+
+      const statsMap: Record<number, { views: number; carts: number; orders: number }> = {};
+      rows.forEach(({ bundleId, eventType, count }) => {
+        if (!statsMap[bundleId]) statsMap[bundleId] = { views: 0, carts: 0, orders: 0 };
+        if (eventType === "view") statsMap[bundleId].views = count;
+        else if (eventType === "add_to_cart") statsMap[bundleId].carts = count;
+        else if (eventType === "order") statsMap[bundleId].orders = count;
+      });
+
+      const stats = Object.entries(statsMap).map(([idStr, s]) => {
+        const bundleId = parseInt(idStr, 10);
+        const conversionRate = s.views > 0 ? Math.round((s.orders / s.views) * 100 * 10) / 10 : 0;
+        return {
+          bundleId,
+          bundleName: bundleNames[bundleId] ?? `Bundle #${bundleId}`,
+          views: s.views,
+          carts: s.carts,
+          orders: s.orders,
+          conversionRate,
+        };
+      });
+
+      stats.sort((a, b) => b.views - a.views);
+
+      const totalViews = stats.reduce((s, x) => s + x.views, 0);
+      const totalCarts = stats.reduce((s, x) => s + x.carts, 0);
+      const totalOrders = stats.reduce((s, x) => s + x.orders, 0);
+
+      res.json({ days, totalViews, totalCarts, totalOrders, stats });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      log(`Analytics error: ${msg}`);
+      res.status(500).json({ error: "Failed to fetch analytics" });
     }
   });
 

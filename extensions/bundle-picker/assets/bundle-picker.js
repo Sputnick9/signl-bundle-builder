@@ -62,6 +62,18 @@
     this.init();
   }
 
+  SignlBundlePicker.prototype.trackEvent = function (bundleId, eventType) {
+    if (!this.appUrl || !this.shop) return;
+    try {
+      fetch(this.appUrl + "/api/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shop: this.shop, bundleId: bundleId, eventType: eventType }),
+        keepalive: true,
+      }).catch(function () {});
+    } catch (_) {}
+  };
+
   SignlBundlePicker.prototype.init = function () {
     var self = this;
     if (!this.appUrl) {
@@ -86,6 +98,7 @@
           self.selections[b.id] = {};
           b.slots.forEach(function (s) { self.selections[b.id][s.id] = {}; });
           self.activeSlots[b.id] = b.slots.length ? b.slots[0].id : null;
+          self.trackEvent(b.id, "view");
         });
         self.render();
       })
@@ -607,6 +620,8 @@
     this.refresh();
 
     var self = this;
+
+    self.trackEvent(bundle.id, "add_to_cart");
 
     fetch("/cart/add.js", {
       method: "POST",
