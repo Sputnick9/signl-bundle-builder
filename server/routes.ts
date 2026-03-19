@@ -56,13 +56,30 @@ const slotProductSchema = z.object({
 const bundleSlotSchema = z.object({
   name: z.string().min(1),
   imageUrl: z.string().nullable().optional(),
+  shopifyCollectionId: z.string().nullable().optional(),
+  shopifyCollectionTitle: z.string().nullable().optional(),
   minQty: z.number().int().min(1).default(1),
   maxQty: z.number().int().min(1).nullable().optional(),
-  products: z.array(slotProductSchema).min(1, "Each slot must have at least one product"),
-}).refine(
-  (s) => s.maxQty == null || s.maxQty >= s.minQty,
-  { message: "maxQty must be greater than or equal to minQty", path: ["maxQty"] }
-);
+  products: z.array(slotProductSchema).default([]),
+}).superRefine((s, ctx) => {
+  if (!s.shopifyCollectionId && s.products.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.too_small,
+      minimum: 1,
+      inclusive: true,
+      type: "array",
+      message: "Each slot must have at least one product or a linked collection",
+      path: ["products"],
+    });
+  }
+  if (s.maxQty != null && s.maxQty < s.minQty) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "maxQty must be greater than or equal to minQty",
+      path: ["maxQty"],
+    });
+  }
+});
 
 const tierItemSchema = z.object({
   minQty: z.number().int().min(1),
@@ -515,6 +532,8 @@ export async function registerRoutes(
       const slotSeeds: SlotSeed[] = slots.map((s) => ({
         name: s.name,
         imageUrl: s.imageUrl ?? null,
+        shopifyCollectionId: s.shopifyCollectionId ?? null,
+        shopifyCollectionTitle: s.shopifyCollectionTitle ?? null,
         minQty: s.minQty,
         maxQty: s.maxQty ?? null,
         products: s.products.map((p) => ({
@@ -565,6 +584,8 @@ export async function registerRoutes(
       const slotSeeds: SlotSeed[] | undefined = slots?.map((s) => ({
         name: s.name,
         imageUrl: s.imageUrl ?? null,
+        shopifyCollectionId: s.shopifyCollectionId ?? null,
+        shopifyCollectionTitle: s.shopifyCollectionTitle ?? null,
         minQty: s.minQty,
         maxQty: s.maxQty ?? null,
         products: s.products.map((p) => ({
@@ -612,6 +633,73 @@ export async function registerRoutes(
       const msg = err instanceof Error ? err.message : "Unknown error";
       log(`Delete bundle error: ${msg}`);
       res.status(500).json({ error: "Failed to delete bundle" });
+    }
+  });
+
+  /* GET /api/shopify/collection-products?collectionId=gid://shopify/Collection/123
+   * Fetches products from a Shopify collection using the Admin API.
+   * Requires a valid Shopify session (admin-only). */
+  app.get("/api/shopify/collection-products", shopifyAuth, async (req: Request, res: Response) => {
+    const authedReq = req as AuthenticatedRequest;
+    const shop = resolveShop(authedReq);
+    if (!shop) {
+      res.status(401).json({ error: "Unauthorized: missing shop context" });
+      return;
+    }
+    const collectionId = req.query.collectionId as string | undefined;
+    if (!collectionId) {
+      res.status(400).json({ error: "Missing collectionId" });
+      return;
+    }
+
+    const shopifyInstance = getShopify();
+    if (!shopifyInstance) {
+      res.status(503).json({ error: "Shopify not configured" });
+      return;
+    }
+
+    try {
+      const sessions = await sessionStorage.findSessionsByShop(shop);
+      const session = sessions.find((s) => !!s.accessToken);
+      if (!session) {
+        res.status(401).json({ error: "No active session for shop" });
+        return;
+      }
+
+      const numericId = collectionId.replace(/\D/g, "");
+      if (!numericId) {
+        res.status(400).json({ error: "Invalid collectionId" });
+        return;
+      }
+
+      const client = new shopifyInstance.clients.Rest({ session });
+      const response = await client.get({
+        path: `products`,
+        query: { collection_id: numericId, limit: "50", fields: "id,title,images,variants" },
+      });
+
+      const rawProducts = (response.body as Record<string, unknown>).products as Array<Record<string, unknown>> ?? [];
+      const products = rawProducts.map((p) => {
+        const images = p.images as Array<Record<string, unknown>>;
+        const variants = p.variants as Array<Record<string, unknown>>;
+        const productImage = images?.[0]?.src as string ?? null;
+        return {
+          shopifyProductId: `gid://shopify/Product/${p.id as number}`,
+          productTitle: p.title as string,
+          productImage,
+          variants: (variants ?? []).map((v) => ({
+            shopifyVariantId: `gid://shopify/ProductVariant/${v.id as number}`,
+            variantTitle: v.title as string,
+            price: v.price as string,
+          })),
+        };
+      });
+
+      res.json({ products });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      log(`Collection products error: ${msg}`);
+      res.status(500).json({ error: "Failed to fetch collection products" });
     }
   });
 

@@ -71,12 +71,15 @@ Top-level bundle record per shop.
 | createdAt / updatedAt | timestamp | |
 
 ### `bundle_slots`
-Each slot = one product group customers choose from (e.g. "Choose a T-Shirt").
+Each slot = one collection tab customers browse in the bundle builder (e.g. "T-Shirts", "Pants").
 | Column | Type | Description |
 |---|---|---|
 | id | serial PK | |
 | bundleId | integer FK → bundles.id | |
-| name | text | Slot label (shown to customer) |
+| name | text | Slot/tab label (shown to customer) |
+| imageUrl | text | Optional tab icon image URL |
+| shopifyCollectionId | text | Shopify Collection GID (linked collection, optional) |
+| shopifyCollectionTitle | text | Linked collection title for display (optional) |
 | position | integer | Display order |
 | minQty | integer | Min items customer must pick |
 | maxQty | integer | Max items (null = unlimited) |
@@ -124,6 +127,7 @@ Set these in Replit Secrets before enabling Shopify OAuth:
 - `POST /api/bundles` — Create bundle (body: `{ name, discountType, discountTiers, status, slots[] }`)
 - `PUT /api/bundles/:id` — Update bundle + replace all slots atomically (DB transaction)
 - `DELETE /api/bundles/:id` — Delete bundle (cascades slots + slot products)
+- `GET /api/shopify/collection-products?collectionId=gid://shopify/Collection/123` — Fetch products from a Shopify collection via Admin API (used by collection slot import)
 
 ### Storefront (public, CORS-enabled, no auth)
 - `GET /api/storefront/bundles?shop=xxx&productId=gid://shopify/Product/yyy` — Active bundles for a product (used by Theme Extension JS)

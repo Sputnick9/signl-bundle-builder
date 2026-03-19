@@ -35,9 +35,23 @@ interface SlotProduct {
 interface SlotEntry {
   name: string;
   imageUrl: string;
+  shopifyCollectionId: string;
+  shopifyCollectionTitle: string;
   minQty: number;
   maxQty: number | null;
   products: SlotProduct[];
+}
+
+function normalizeProductGid(value: string): string {
+  const v = value.trim();
+  if (/^\d+$/.test(v)) return `gid://shopify/Product/${v}`;
+  return v;
+}
+
+function normalizeVariantGid(value: string): string {
+  const v = value.trim();
+  if (/^\d+$/.test(v)) return `gid://shopify/ProductVariant/${v}`;
+  return v;
 }
 
 const defaultTiers: DiscountTierRule[] = [
@@ -56,6 +70,8 @@ const SLOT_NAME_DEFAULTS = [
 const emptySlot = (index = 0): SlotEntry => ({
   name: SLOT_NAME_DEFAULTS[index % SLOT_NAME_DEFAULTS.length] ?? "",
   imageUrl: "",
+  shopifyCollectionId: "",
+  shopifyCollectionTitle: "",
   minQty: 1,
   maxQty: null,
   products: [],
@@ -83,6 +99,7 @@ export default function AdminBundleForm() {
 
   const [step, setStep] = useState<StepIndex>(0);
   const pickerAvailable = isResourcePickerAvailable();
+  const [collectionLoadingIdx, setCollectionLoadingIdx] = useState<number | null>(null);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -109,6 +126,8 @@ export default function AdminBundleForm() {
         (existingBundle.slots ?? []).map((slot) => ({
           name: slot.name,
           imageUrl: slot.imageUrl || "",
+          shopifyCollectionId: slot.shopifyCollectionId || "",
+          shopifyCollectionTitle: slot.shopifyCollectionTitle || "",
           minQty: slot.minQty,
           maxQty: slot.maxQty ?? null,
           products: slot.products.map((p) => ({
@@ -134,13 +153,15 @@ export default function AdminBundleForm() {
         slots: slots.map((slot) => ({
           name: slot.name.trim(),
           imageUrl: slot.imageUrl || null,
+          shopifyCollectionId: slot.shopifyCollectionId || null,
+          shopifyCollectionTitle: slot.shopifyCollectionTitle || null,
           minQty: slot.minQty || 1,
           maxQty: slot.maxQty || null,
           products: slot.products
             .filter((p) => p.productTitle.trim())
             .map((p) => ({
-              shopifyProductId: p.shopifyProductId || "",
-              shopifyVariantId: p.shopifyVariantId || null,
+              shopifyProductId: normalizeProductGid(p.shopifyProductId || ""),
+              shopifyVariantId: p.shopifyVariantId ? normalizeVariantGid(p.shopifyVariantId) : null,
               productTitle: p.productTitle,
               variantTitle: p.variantTitle || null,
               productImage: p.productImage || null,
@@ -265,7 +286,108 @@ export default function AdminBundleForm() {
     []
   );
 
-  const allSlotsHaveProducts = slots.every((s) => s.products.length > 0);
+  const fetchAndLoadCollectionProducts = useCallback(
+    async (slotIdx: number, collectionId: string, collectionTitle: string) => {
+      setCollectionLoadingIdx(slotIdx);
+      try {
+        const res = await apiRequest("GET", `/api/shopify/collection-products?collectionId=${encodeURIComponent(collectionId)}`);
+        const data = await res.json() as { products?: Array<{ shopifyProductId: string; productTitle: string; productImage: string | null; variants: Array<{ shopifyVariantId: string; variantTitle: string }> }> };
+        const products: SlotProduct[] = (data.products ?? []).flatMap((p) => {
+          if (!p.variants?.length) {
+            return [{
+              shopifyProductId: p.shopifyProductId,
+              shopifyVariantId: "",
+              productTitle: p.productTitle,
+              variantTitle: "",
+              productImage: p.productImage || "",
+            }];
+          }
+          return p.variants.map((v) => ({
+            shopifyProductId: p.shopifyProductId,
+            shopifyVariantId: v.shopifyVariantId,
+            productTitle: p.productTitle,
+            variantTitle: v.variantTitle === "Default Title" ? "" : v.variantTitle,
+            productImage: p.productImage || "",
+          }));
+        });
+        setSlots((prev) =>
+          prev.map((s, idx) =>
+            idx === slotIdx
+              ? {
+                  ...s,
+                  shopifyCollectionId: collectionId,
+                  shopifyCollectionTitle: collectionTitle,
+                  name: s.name || collectionTitle,
+                  products,
+                }
+              : s
+          )
+        );
+      } catch {
+        setError(`Failed to load products from collection "${collectionTitle}". You can add them manually.`);
+        setSlots((prev) =>
+          prev.map((s, idx) =>
+            idx === slotIdx
+              ? { ...s, shopifyCollectionId: collectionId, shopifyCollectionTitle: collectionTitle, name: s.name || collectionTitle }
+              : s
+          )
+        );
+      } finally {
+        setCollectionLoadingIdx(null);
+      }
+    },
+    []
+  );
+
+  const pickCollectionFromShopify = useCallback(
+    async (slotIdx: number) => {
+      const w = window as unknown as {
+        shopify?: { resourcePicker?: (opts: unknown) => Promise<unknown> };
+      };
+      if (typeof w.shopify?.resourcePicker !== "function") return;
+      try {
+        const selected = await w.shopify.resourcePicker({ type: "collection", multiple: false });
+        const result = Array.isArray(selected) ? selected[0] : selected;
+        if (!result) return;
+        const r = result as { id?: string; title?: string; image?: { originalSrc?: string } };
+        const collectionId = r.id ?? "";
+        const collectionTitle = r.title ?? "";
+        const collectionImage = r.image?.originalSrc ?? "";
+        setSlots((prev) =>
+          prev.map((s, idx) =>
+            idx === slotIdx
+              ? { ...s, shopifyCollectionId: collectionId, shopifyCollectionTitle: collectionTitle, name: s.name || collectionTitle, imageUrl: s.imageUrl || collectionImage }
+              : s
+          )
+        );
+        await fetchAndLoadCollectionProducts(slotIdx, collectionId, collectionTitle);
+      } catch {
+        // Resource picker dismissed
+      }
+    },
+    [fetchAndLoadCollectionProducts]
+  );
+
+  const resyncCollectionProducts = useCallback(
+    async (slotIdx: number) => {
+      const slot = slots[slotIdx];
+      if (!slot?.shopifyCollectionId) return;
+      await fetchAndLoadCollectionProducts(slotIdx, slot.shopifyCollectionId, slot.shopifyCollectionTitle);
+    },
+    [slots, fetchAndLoadCollectionProducts]
+  );
+
+  const unlinkCollection = useCallback((slotIdx: number) => {
+    setSlots((prev) =>
+      prev.map((s, idx) =>
+        idx === slotIdx
+          ? { ...s, shopifyCollectionId: "", shopifyCollectionTitle: "" }
+          : s
+      )
+    );
+  }, []);
+
+  const allSlotsHaveProducts = slots.every((s) => s.products.length > 0 || !!s.shopifyCollectionId);
   const allSlotsHaveNames = slots.every((s) => s.name.trim().length > 0);
   const allSlotQtyValid = slots.every((s) => s.maxQty == null || s.maxQty >= s.minQty);
   const tierQtysUnique = new Set(tiers.map((t) => t.minQty)).size === tiers.length;
@@ -406,9 +528,9 @@ export default function AdminBundleForm() {
               {!pickerAvailable && (
                 <Banner tone="info">
                   <Text as="p">
-                    Product browsing is available when this app is open inside Shopify Admin.
+                    Collection browsing is available when this app is open inside Shopify Admin.
                     Use <strong>Add manually</strong> to enter product titles and IDs while developing,
-                    or open the app embedded to use the Shopify product picker.
+                    or open the app embedded to use the Shopify collection picker.
                   </Text>
                 </Banner>
               )}
@@ -514,31 +636,88 @@ export default function AdminBundleForm() {
                     <Divider />
 
                     <InlineStack align="space-between" blockAlign="center">
-                      <Text as="h3" variant="headingSm">
-                        Products in this collection ({slot.products.length})
-                      </Text>
+                      <BlockStack gap="100">
+                        <Text as="h3" variant="headingSm">
+                          Products in this collection ({slot.products.length})
+                        </Text>
+                        {slot.shopifyCollectionId && (
+                          <InlineStack gap="100" blockAlign="center">
+                            <Badge tone="success">
+                              {slot.shopifyCollectionTitle || slot.shopifyCollectionId}
+                            </Badge>
+                          </InlineStack>
+                        )}
+                      </BlockStack>
                       <InlineStack gap="200">
-                        <Button
-                          size="slim"
-                          onClick={() => pickProductsFromShopify(slotIdx)}
-                          data-testid={`button-pick-products-${slotIdx}`}
-                        >
-                          Browse Shopify products
-                        </Button>
-                        <Button
-                          size="slim"
-                          variant="plain"
-                          onClick={() => addProductToSlot(slotIdx)}
-                          data-testid={`button-add-product-${slotIdx}`}
-                        >
-                          Add manually
-                        </Button>
+                        {slot.shopifyCollectionId ? (
+                          <>
+                            <Button
+                              size="slim"
+                              loading={collectionLoadingIdx === slotIdx}
+                              onClick={() => resyncCollectionProducts(slotIdx)}
+                              data-testid={`button-resync-collection-${slotIdx}`}
+                            >
+                              Re-sync products
+                            </Button>
+                            {pickerAvailable && (
+                              <Button
+                                size="slim"
+                                variant="plain"
+                                onClick={() => pickCollectionFromShopify(slotIdx)}
+                                data-testid={`button-change-collection-${slotIdx}`}
+                              >
+                                Change collection
+                              </Button>
+                            )}
+                            <Button
+                              size="slim"
+                              variant="plain"
+                              tone="critical"
+                              onClick={() => unlinkCollection(slotIdx)}
+                              data-testid={`button-unlink-collection-${slotIdx}`}
+                            >
+                              Unlink
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            {pickerAvailable && (
+                              <Button
+                                size="slim"
+                                variant="primary"
+                                loading={collectionLoadingIdx === slotIdx}
+                                onClick={() => pickCollectionFromShopify(slotIdx)}
+                                data-testid={`button-browse-collections-${slotIdx}`}
+                              >
+                                Browse collections
+                              </Button>
+                            )}
+                            <Button
+                              size="slim"
+                              variant={pickerAvailable ? "plain" : undefined}
+                              onClick={() => addProductToSlot(slotIdx)}
+                              data-testid={`button-add-product-${slotIdx}`}
+                            >
+                              Add manually
+                            </Button>
+                          </>
+                        )}
                       </InlineStack>
                     </InlineStack>
 
-                    {slot.products.length === 0 && (
+                    {slot.products.length === 0 && !slot.shopifyCollectionId && (
                       <Text as="p" tone="subdued" alignment="center">
-                        No products yet. Use "Browse Shopify products" when connected, or add manually (e.g. T-Shirts, Polos, Hoodies).
+                        Link a Shopify collection to import its products automatically, or add products manually.
+                      </Text>
+                    )}
+                    {slot.products.length === 0 && slot.shopifyCollectionId && collectionLoadingIdx === slotIdx && (
+                      <Text as="p" tone="subdued" alignment="center">
+                        Loading products from collection…
+                      </Text>
+                    )}
+                    {slot.products.length === 0 && slot.shopifyCollectionId && collectionLoadingIdx !== slotIdx && (
+                      <Text as="p" tone="caution" alignment="center">
+                        No products loaded yet. Click "Re-sync products" to import from the linked collection.
                       </Text>
                     )}
 
@@ -575,14 +754,14 @@ export default function AdminBundleForm() {
                                 data-testid={`input-product-title-${slotIdx}-${productIdx}`}
                               />
                               <TextField
-                                label="Shopify Product ID (GID)"
+                                label="Shopify Product ID"
                                 value={product.shopifyProductId}
                                 onChange={(v) =>
                                   updateProductInSlot(slotIdx, productIdx, "shopifyProductId", v)
                                 }
                                 autoComplete="off"
-                                placeholder="gid://shopify/Product/123..."
-                                helpText="From your Shopify admin"
+                                placeholder="e.g. 9415660503265"
+                                helpText="Enter the numeric ID from your Shopify admin URL."
                                 data-testid={`input-product-id-${slotIdx}-${productIdx}`}
                               />
                             </InlineGrid>
@@ -594,7 +773,7 @@ export default function AdminBundleForm() {
                                   updateProductInSlot(slotIdx, productIdx, "shopifyVariantId", v)
                                 }
                                 autoComplete="off"
-                                placeholder="gid://shopify/ProductVariant/..."
+                                placeholder="e.g. 12345678"
                                 helpText="Leave blank to allow any variant."
                                 data-testid={`input-variant-id-${slotIdx}-${productIdx}`}
                               />
