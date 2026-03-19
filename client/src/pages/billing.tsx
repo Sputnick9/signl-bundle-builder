@@ -31,7 +31,7 @@ interface BillingStatus {
   planPrice?: string;
   trialDays?: number;
   activatedAt?: string | null;
-  maxBundles: number | null;
+  maxActiveBundles: number | null;
   cssAccess: boolean;
   advancedAnalytics: boolean;
   unlimitedSales: boolean;
@@ -93,14 +93,10 @@ interface PlanCardProps {
   tier: PlanTier;
   currentTier: PlanTier;
   isActive: boolean;
-  price: string;
-  trialLabel: string | null;
   onSubscribe: (tier: PlanTier) => void;
   subscribing: boolean;
   subscribingTier: PlanTier | null;
   onGoToBundles: () => void;
-  shop: string;
-  host: string;
 }
 
 const PLAN_DISPLAY: Record<PlanTier, { label: string; tagline: string; price: string; trial: string | null; popular: boolean }> = {
@@ -127,7 +123,7 @@ const PLAN_DISPLAY: Record<PlanTier, { label: string; tagline: string; price: st
   },
 };
 
-function PlanCard({ tier, currentTier, isActive, onSubscribe, subscribing, subscribingTier, onGoToBundles }: PlanCardProps) {
+function PlanCard({ tier, currentTier, isActive, onSubscribe, subscribing, subscribingTier, onGoToBundles }: Readonly<PlanCardProps>) {
   const plan = PLAN_DISPLAY[tier];
   const isCurrent = currentTier === tier && isActive;
   const isPaidActive = isActive && currentTier !== "free";
@@ -366,14 +362,10 @@ export default function BillingPage() {
                 tier={tier}
                 currentTier={currentTier}
                 isActive={isActive}
-                price={PLAN_DISPLAY[tier].price}
-                trialLabel={PLAN_DISPLAY[tier].trial}
                 onSubscribe={(t) => subscribe.mutate(t)}
                 subscribing={subscribe.isPending}
                 subscribingTier={subscribingTier}
                 onGoToBundles={goToBundles}
-                shop={shop}
-                host={host}
               />
             ))}
           </InlineGrid>
