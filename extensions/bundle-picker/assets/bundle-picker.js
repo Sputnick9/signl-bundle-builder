@@ -56,6 +56,7 @@
     this.currency = container.dataset.currency || "USD";
     this.selections = {};
     this.activeSlots = {};
+    this.enteringBundle = null;
     this.bundles = [];
     this.isSubmitting = false;
     this.init();
@@ -140,7 +141,18 @@
 
     var slotsWrap = el("div", { className: "signl-bp__slots" });
     if (activeSlot) {
-      slotsWrap.appendChild(self.renderSlot(bundle, activeSlot, activeSlotIdx + 1));
+      var slotEl = self.renderSlot(bundle, activeSlot, activeSlotIdx + 1);
+      if (self.enteringBundle === bundle.id) {
+        var body = slotEl.querySelector(".signl-bp__slot-body");
+        if (body) {
+          body.classList.add("signl-bp__slot-body--entering");
+          body.addEventListener("animationend", function () {
+            body.classList.remove("signl-bp__slot-body--entering");
+          }, { once: true });
+        }
+        self.enteringBundle = null;
+      }
+      slotsWrap.appendChild(slotEl);
     }
     root.appendChild(slotsWrap);
 
@@ -185,6 +197,7 @@
 
       tab.addEventListener("click", function () {
         self.activeSlots[bundle.id] = slot.id;
+        self.enteringBundle = bundle.id;
         self.refresh();
       });
 

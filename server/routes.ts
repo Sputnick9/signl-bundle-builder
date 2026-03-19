@@ -514,6 +514,7 @@ export async function registerRoutes(
       const bundleInsert = toBundleInsert({ ...rawBundle, shop: canonicalShop });
       const slotSeeds: SlotSeed[] = slots.map((s) => ({
         name: s.name,
+        imageUrl: s.imageUrl ?? null,
         minQty: s.minQty,
         maxQty: s.maxQty ?? null,
         products: s.products.map((p) => ({
@@ -563,6 +564,7 @@ export async function registerRoutes(
 
       const slotSeeds: SlotSeed[] | undefined = slots?.map((s) => ({
         name: s.name,
+        imageUrl: s.imageUrl ?? null,
         minQty: s.minQty,
         maxQty: s.maxQty ?? null,
         products: s.products.map((p) => ({

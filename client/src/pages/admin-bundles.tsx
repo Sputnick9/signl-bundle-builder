@@ -387,7 +387,7 @@ export default function AdminBundles() {
 
           {!isLoading && bundles.length === 0 ? (
             <EmptyState
-              heading="Create your first bundle"
+              heading="Build your first outfit bundle"
               action={{
                 content: "Create bundle",
                 onAction: () => navigate("/admin/bundles/new"),
@@ -395,7 +395,7 @@ export default function AdminBundles() {
               image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
             >
               <p>
-                Bundle your products together and offer volume discounts to increase average order value.
+                Create a bundle with collection tabs — T-Shirts, Pants, Shoes, and more — and offer volume discounts to boost your average order value.
               </p>
             </EmptyState>
           ) : (
