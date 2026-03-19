@@ -402,6 +402,13 @@ export default function AdminBundleForm() {
     async (slotIdx: number) => {
       const raw = collectionInputValue.trim();
       if (!raw) return;
+      const isNumeric = /^\d+$/.test(raw);
+      const isGid = raw.startsWith("gid://shopify/Collection/");
+      const hasUrlId = /\/collections\/\d+/.test(raw);
+      if (!isNumeric && !isGid && !hasUrlId) {
+        setError("Invalid collection ID. Enter a numeric ID (e.g. 123456789), a Shopify GID, or an admin URL containing /collections/ID.");
+        return;
+      }
       const collectionGid = normalizeCollectionGid(raw);
       setSlots((prev) =>
         prev.map((s, idx) =>
@@ -458,11 +465,23 @@ export default function AdminBundleForm() {
         <BlockStack gap="500">
           {error && (
             <Banner
-              title="Error saving bundle"
+              title={error.toLowerCase().includes("subscription") ? "Subscription required" : "Error saving bundle"}
               tone="critical"
               onDismiss={() => setError(null)}
+              action={
+                error.toLowerCase().includes("subscription")
+                  ? {
+                      content: "Go to Billing",
+                      url: `/billing${window.location.search}`,
+                    }
+                  : undefined
+              }
             >
-              <Text as="p">{error}</Text>
+              <Text as="p">
+                {error.toLowerCase().includes("subscription")
+                  ? "An active subscription is required to create bundles. Please activate your plan on the Billing page."
+                  : error}
+              </Text>
             </Banner>
           )}
 
