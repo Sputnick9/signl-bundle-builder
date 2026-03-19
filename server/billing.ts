@@ -6,15 +6,70 @@ function log(msg: string) {
   console.log(`[billing] ${msg}`);
 }
 
-export const PLAN_NAME = "SiGNL Bundle Builder — Standard";
-export const PLAN_PRICE = "19.99";
-export const TRIAL_DAYS = 7;
+export type PlanTier = "free" | "essential" | "pro";
+
+export interface PlanDefinition {
+  tier: PlanTier;
+  name: string;
+  price: string;
+  trialDays: number;
+  maxBundles: number | null;
+  salesCapLabel: string;
+  cssAccess: boolean;
+  advancedAnalytics: boolean;
+  unlimitedSales: boolean;
+}
+
+export const PLANS: Record<PlanTier, PlanDefinition> = {
+  free: {
+    tier: "free",
+    name: "Free",
+    price: "0",
+    trialDays: 0,
+    maxBundles: 2,
+    salesCapLabel: "Up to $500/mo in bundle sales",
+    cssAccess: false,
+    advancedAnalytics: false,
+    unlimitedSales: false,
+  },
+  essential: {
+    tier: "essential",
+    name: "SiGNL Bundle Builder — Essential",
+    price: "29",
+    trialDays: 7,
+    maxBundles: null,
+    salesCapLabel: "Up to $5,000/mo in bundle sales",
+    cssAccess: false,
+    advancedAnalytics: false,
+    unlimitedSales: false,
+  },
+  pro: {
+    tier: "pro",
+    name: "SiGNL Bundle Builder — Pro",
+    price: "49",
+    trialDays: 14,
+    maxBundles: null,
+    salesCapLabel: "Unlimited bundle sales",
+    cssAccess: true,
+    advancedAnalytics: true,
+    unlimitedSales: true,
+  },
+};
+
+export interface PlanFeatures {
+  planTier: PlanTier;
+  maxBundles: number | null;
+  cssAccess: boolean;
+  advancedAnalytics: boolean;
+  unlimitedSales: boolean;
+}
 
 export type SubscriptionStatus = "active" | "pending" | "declined" | "cancelled" | "expired" | "frozen" | "none";
 
 export interface BillingStatus {
   hasSubscription: boolean;
   status: SubscriptionStatus;
+  planTier: PlanTier;
   chargeId?: string | null;
   planName?: string;
   planPrice?: string;
@@ -31,14 +86,16 @@ export async function getSubscriptionStatus(shop: string): Promise<BillingStatus
       .limit(1);
 
     if (!rows.length) {
-      return { hasSubscription: false, status: "none" };
+      return { hasSubscription: false, status: "none", planTier: "free" };
     }
 
     const sub = rows[0];
     const active = sub.status === "active";
+    const tier = (sub.planTier ?? "free") as PlanTier;
     return {
       hasSubscription: active,
       status: sub.status as SubscriptionStatus,
+      planTier: tier,
       chargeId: sub.chargeId,
       planName: sub.planName,
       planPrice: sub.planPrice,
@@ -47,18 +104,74 @@ export async function getSubscriptionStatus(shop: string): Promise<BillingStatus
     };
   } catch (err) {
     log(`getSubscriptionStatus error: ${err instanceof Error ? err.message : String(err)}`);
-    return { hasSubscription: false, status: "none" };
+    return { hasSubscription: false, status: "none", planTier: "free" };
+  }
+}
+
+export function getPlanFeatures(tier: PlanTier): PlanFeatures {
+  const plan = PLANS[tier];
+  return {
+    planTier: tier,
+    maxBundles: plan.maxBundles,
+    cssAccess: plan.cssAccess,
+    advancedAnalytics: plan.advancedAnalytics,
+    unlimitedSales: plan.unlimitedSales,
+  };
+}
+
+export async function upsertFreeSubscription(shop: string): Promise<void> {
+  const now = new Date();
+  const plan = PLANS.free;
+
+  const existing = await db
+    .select()
+    .from(shopSubscriptions)
+    .where(eq(shopSubscriptions.shop, shop))
+    .limit(1);
+
+  if (existing.length) {
+    if (existing[0].planTier !== "free" && existing[0].status === "active") {
+      return;
+    }
+    await db
+      .update(shopSubscriptions)
+      .set({
+        status: "active",
+        planTier: "free",
+        planName: plan.name,
+        planPrice: plan.price,
+        trialDays: plan.trialDays,
+        chargeId: null,
+        activatedAt: existing[0].activatedAt ?? now,
+        updatedAt: now,
+      })
+      .where(eq(shopSubscriptions.shop, shop));
+  } else {
+    await db.insert(shopSubscriptions).values({
+      shop,
+      chargeId: null,
+      status: "active",
+      planTier: "free",
+      planName: plan.name,
+      planPrice: plan.price,
+      trialDays: plan.trialDays,
+      activatedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
   }
 }
 
 export async function upsertSubscription(
   shop: string,
   chargeId: string,
-  status: string
+  status: string,
+  planTier: PlanTier = "essential"
 ): Promise<void> {
   const now = new Date();
   const activatedAt = status === "active" ? now : null;
   const cancelledAt = (status === "cancelled" || status === "declined" || status === "expired") ? now : null;
+  const plan = PLANS[planTier];
 
   const existing = await db
     .select()
@@ -72,6 +185,10 @@ export async function upsertSubscription(
       .set({
         chargeId,
         status,
+        planTier,
+        planName: plan.name,
+        planPrice: plan.price,
+        trialDays: plan.trialDays,
         ...(activatedAt && !existing[0].activatedAt && { activatedAt }),
         ...(cancelledAt && { cancelledAt }),
         updatedAt: now,
@@ -82,9 +199,10 @@ export async function upsertSubscription(
       shop,
       chargeId,
       status,
-      trialDays: TRIAL_DAYS,
-      planName: PLAN_NAME,
-      planPrice: PLAN_PRICE,
+      planTier,
+      planName: plan.name,
+      planPrice: plan.price,
+      trialDays: plan.trialDays,
       activatedAt,
       cancelledAt,
       createdAt: now,
@@ -96,8 +214,10 @@ export async function upsertSubscription(
 export async function createAppSubscription(
   shopifyInstance: NonNullable<import("./shopify").GetShopifyReturn>,
   session: import("@shopify/shopify-api").Session,
-  returnUrl: string
+  returnUrl: string,
+  planTier: PlanTier = "essential"
 ): Promise<string> {
+  const plan = PLANS[planTier];
   const client = new shopifyInstance.clients.Graphql({ session });
 
   const result = await client.query({
@@ -116,15 +236,15 @@ export async function createAppSubscription(
         }
       }`,
       variables: {
-        name: PLAN_NAME,
+        name: plan.name,
         returnUrl,
-        trialDays: TRIAL_DAYS,
+        trialDays: plan.trialDays,
         test: process.env.NODE_ENV !== "production",
         lineItems: [
           {
             plan: {
               appRecurringPricingDetails: {
-                price: { amount: PLAN_PRICE, currencyCode: "USD" },
+                price: { amount: plan.price, currencyCode: "USD" },
                 interval: "EVERY_30_DAYS",
               },
             },
@@ -152,7 +272,7 @@ export async function createAppSubscription(
   const status = (subscription?.status as string | undefined)?.toLowerCase() ?? "pending";
 
   if (chargeId) {
-    await upsertSubscription(session.shop, chargeId, status);
+    await upsertSubscription(session.shop, chargeId, status, planTier);
   }
 
   return confirmationUrl;
@@ -161,7 +281,8 @@ export async function createAppSubscription(
 export async function verifyAppSubscription(
   shopifyInstance: NonNullable<import("./shopify").GetShopifyReturn>,
   session: import("@shopify/shopify-api").Session,
-  chargeId: string
+  chargeId: string,
+  planTier: PlanTier = "essential"
 ): Promise<string> {
   const client = new shopifyInstance.clients.Graphql({ session });
 
@@ -191,7 +312,7 @@ export async function verifyAppSubscription(
   }
 
   const status = (node.status as string).toLowerCase();
-  await upsertSubscription(session.shop, chargeId, status);
+  await upsertSubscription(session.shop, chargeId, status, planTier);
   return status;
 }
 
@@ -226,7 +347,11 @@ export async function checkSubscriptionLive(
   const active = subs.find((s) => (s.status as string)?.toLowerCase() === "active");
   if (active) {
     const chargeId = active.id as string;
-    await upsertSubscription(session.shop, chargeId, "active");
+    const subName = (active.name as string) ?? "";
+    let tier: PlanTier = "essential";
+    if (subName.toLowerCase().includes("pro")) tier = "pro";
+    else if (subName.toLowerCase().includes("essential")) tier = "essential";
+    await upsertSubscription(session.shop, chargeId, "active", tier);
     return true;
   }
 

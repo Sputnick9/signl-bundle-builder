@@ -11,9 +11,10 @@ import {
   checkSubscriptionLive,
   createAppSubscription,
   verifyAppSubscription,
-  PLAN_NAME,
-  PLAN_PRICE,
-  TRIAL_DAYS,
+  upsertFreeSubscription,
+  getPlanFeatures,
+  PLANS,
+  type PlanTier,
 } from "./billing";
 import {
   listBundles,
@@ -192,6 +193,11 @@ function makeRequireActiveSubscription() {
             next();
             return;
           }
+          const localStatus = await getSubscriptionStatus(shop);
+          if (localStatus.hasSubscription) {
+            next();
+            return;
+          }
         } catch (liveErr) {
           log(`Billing live check for ${shop} failed, falling back to DB: ${liveErr instanceof Error ? liveErr.message : String(liveErr)}`);
           const localStatus = await getSubscriptionStatus(shop);
@@ -349,18 +355,17 @@ export async function registerRoutes(
         }
 
         const host = req.query.host as string;
-        const billingSub = await getSubscriptionStatus(session.shop);
-        if (!billingSub.hasSubscription) {
-          const billingRedirect = host
-            ? `/billing?shop=${session.shop}&host=${host}`
-            : `/billing?shop=${session.shop}`;
-          res.redirect(billingRedirect);
-        } else {
-          const redirectUrl = host
-            ? `/?shop=${session.shop}&host=${host}`
-            : `/?shop=${session.shop}`;
-          res.redirect(redirectUrl);
+        try {
+          await upsertFreeSubscription(session.shop);
+          log(`Free subscription ensured for ${session.shop}`);
+        } catch (freeErr: unknown) {
+          const msg = freeErr instanceof Error ? freeErr.message : "Unknown error";
+          log(`Free subscription upsert warning: ${msg}`);
         }
+        const redirectUrl = host
+          ? `/?shop=${session.shop}&host=${host}`
+          : `/?shop=${session.shop}`;
+        res.redirect(redirectUrl);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Unknown error";
         log(`OAuth callback error: ${msg}`);
@@ -892,16 +897,30 @@ export async function registerRoutes(
     }
     try {
       const status = await getSubscriptionStatus(shop);
-      res.json({
-        ...status,
-        planName: PLAN_NAME,
-        planPrice: PLAN_PRICE,
-        trialDays: TRIAL_DAYS,
-      });
+      const features = getPlanFeatures(status.planTier);
+      res.json({ ...status, ...features });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       log(`Billing status error: ${msg}`);
       res.status(500).json({ error: "Failed to get billing status" });
+    }
+  });
+
+  app.get("/api/billing/features", shopifyAuth, async (req: Request, res: Response) => {
+    const authedReq = req as AuthenticatedRequest;
+    const shop = resolveShop(authedReq);
+    if (!shop) {
+      res.status(401).json({ error: "Unauthorized: missing shop context" });
+      return;
+    }
+    try {
+      const status = await getSubscriptionStatus(shop);
+      const features = getPlanFeatures(status.planTier);
+      res.json(features);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      log(`Billing features error: ${msg}`);
+      res.status(500).json({ error: "Failed to get plan features" });
     }
   });
 
@@ -920,9 +939,11 @@ export async function registerRoutes(
           res.status(401).json({ error: "No active session for shop" });
           return;
         }
+        const rawPlan = (req.query.plan as string) || "essential";
+        const planTier: PlanTier = rawPlan === "pro" ? "pro" : "essential";
         const host = (req.query.host as string) || "";
-        const returnUrl = `${getAppUrl()}/billing/return?shop=${encodeURIComponent(shop)}&host=${encodeURIComponent(host)}`;
-        const confirmationUrl = await createAppSubscription(shopify, session, returnUrl);
+        const returnUrl = `${getAppUrl()}/billing/return?shop=${encodeURIComponent(shop)}&host=${encodeURIComponent(host)}&plan=${planTier}`;
+        const confirmationUrl = await createAppSubscription(shopify, session, returnUrl, planTier);
         res.json({ confirmationUrl });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Unknown error";
@@ -935,6 +956,8 @@ export async function registerRoutes(
       const shop = req.query.shop as string | undefined;
       const host = req.query.host as string | undefined;
       const chargeId = req.query.charge_id as string | undefined;
+      const rawPlan = (req.query.plan as string) || "essential";
+      const returnPlanTier: PlanTier = rawPlan === "pro" ? "pro" : "essential";
 
       if (!shop) {
         res.status(400).send("Missing shop parameter");
@@ -961,8 +984,8 @@ export async function registerRoutes(
           res.status(401).send("No active session for shop");
           return;
         }
-        const status = await verifyAppSubscription(shopify, session, chargeId);
-        log(`Billing return for ${shop}: charge ${chargeId} status=${status}`);
+        const status = await verifyAppSubscription(shopify, session, chargeId, returnPlanTier);
+        log(`Billing return for ${shop}: charge ${chargeId} plan=${returnPlanTier} status=${status}`);
 
         if (status === "active" || status === "pending") {
           const redirectUrl = host

@@ -31,11 +31,10 @@ A full Shopify embedded app that allows merchants to create and manage product b
    - `extensions/bundle-discount/` — Shopify Function extension (type: `product_discounts`)
    - `GET/POST/DELETE /api/shop/discount` — manage discount registration per shop
    - Auto-registers discount in OAuth callback when `SHOPIFY_FUNCTION_ID` env var is set
-5. **Task 5 — Billing & Subscriptions** ✅ COMPLETE
+5. **Task 5 — Billing & Subscriptions** ✅ COMPLETE (superseded by Task 11)
    - `server/billing.ts` — Shopify Billing API integration
    - `GET /api/billing/status`, `POST /api/billing/subscribe`, `GET /billing/return`
-   - OAuth callback redirects new installs to `/billing` if no active subscription
-   - `client/src/pages/billing.tsx` — Polaris pricing page ($19.99/month, 7-day trial)
+   - `client/src/pages/billing.tsx` — 3-tier pricing comparison table
 6. **Task 6 — Navigation & App Shell Revamp** ✅ COMPLETE
    - `client/src/components/admin-layout.tsx` — Polaris Frame + Navigation with 5 items: Bundles, Analytics, Settings, Pricing, Support (Dashboard removed)
    - `NavMenu` from `@shopify/app-bridge-react` registers nav in Shopify Admin sidebar
@@ -44,6 +43,14 @@ A full Shopify embedded app that allows merchants to create and manage product b
    - `client/src/pages/analytics-stub.tsx` — Analytics page (coming soon stub) at `/analytics`
    - `client/src/pages/settings-stub.tsx` — Settings page (coming soon stub) at `/settings`
    - `client/src/pages/support.tsx` — Support page at `/support` with contact info, resources, FAQ
+11. **Task 11 — Three-Tier Pricing (Free / Essential / Pro)** ✅ COMPLETE
+    - `PLANS` constant in `server/billing.ts` defines Free ($0, 2 bundles), Essential ($29, 7-day trial), Pro ($49, 14-day trial)
+    - `planTier` column added to `shop_subscriptions` schema
+    - New installs are auto-enrolled in Free tier (no billing redirect required)
+    - `GET /api/billing/features` — returns planTier + feature flags per shop
+    - `POST /api/billing/subscribe?plan=essential|pro` — creates the correct Shopify subscription
+    - `requireBilling` middleware updated: Free tier ("active" DB row, no chargeId) passes the DB check
+    - `client/src/pages/billing.tsx` — Full rewrite: 3-column InlineGrid pricing table with feature checklists, Pro "Most Popular" highlight, per-plan CTA buttons
 
 ## Database Schema
 
@@ -87,16 +94,17 @@ Individual product/variant options within a slot.
 | productImage | text | Image URL (optional) |
 
 ### `shop_subscriptions`
-Tracks Shopify Billing API subscription status per shop.
+Tracks Shopify Billing API subscription status per shop (updated for 3-tier pricing in Task 11).
 | Column | Type | Description |
 |---|---|---|
 | id | serial PK | |
 | shop | text UNIQUE | myshopify domain |
-| chargeId | text | Shopify subscription GID (`gid://shopify/AppSubscription/...`) |
-| status | text | `pending`, `active`, `declined`, `cancelled`, `expired`, `frozen` |
-| trialDays | integer | Free trial days (default: 7) |
+| chargeId | text | Shopify subscription GID (null for Free tier) |
+| status | text | `active`, `pending`, `declined`, `cancelled`, `expired`, `frozen` |
+| planTier | text | `free`, `essential`, or `pro` (default: `free`) |
+| trialDays | integer | Free trial days (0 for Free, 7 for Essential, 14 for Pro) |
 | planName | text | Plan display name |
-| planPrice | text | Monthly price string (default: `19.99`) |
+| planPrice | text | Monthly price string (`0`, `29`, or `49`) |
 | activatedAt | timestamp | When subscription became active |
 | cancelledAt | timestamp | When subscription was cancelled |
 
