@@ -46,7 +46,7 @@ interface PlanFeatureRow {
 
 const FEATURES: PlanFeatureRow[] = [
   { label: "Bundle sales cap", free: "Up to $500/mo", essential: "Up to $5,000/mo", pro: "Unlimited" },
-  { label: "Active bundles", free: "Up to 2", essential: "Unlimited", pro: "Unlimited" },
+  { label: "Active bundles", free: "Up to 1", essential: "Up to 20", pro: "Unlimited" },
   { label: "Percentage discounts", free: true, essential: true, pro: true },
   { label: "Fixed amount discounts", free: false, essential: true, pro: true },
   { label: "All discount tiers", free: false, essential: true, pro: true },
@@ -54,7 +54,6 @@ const FEATURES: PlanFeatureRow[] = [
   { label: "Collection-based slots", free: true, essential: true, pro: true },
   { label: "Basic analytics", free: false, essential: "Coming soon", pro: "Coming soon" },
   { label: "Custom CSS styling", free: false, essential: false, pro: true },
-  { label: "Advanced analytics + export", free: false, essential: false, pro: "Coming soon" },
   { label: "Early access to features", free: false, essential: false, pro: true },
   { label: "Support", free: "Community email", essential: "Priority email (next business day)", pro: "Priority + onboarding call" },
 ];
@@ -212,7 +211,7 @@ function PlanCard({ tier, currentTier, isActive, onSubscribe, subscribing, subsc
             </Text>
             <BlockStack gap="200">
               {FEATURES.map((feature) => (
-                <InlineStack key={feature.label} gap="200" blockAlign="start">
+                <InlineStack key={feature.label} gap="200" blockAlign="center">
                   <Box minWidth="20px">
                     <FeatureValue value={feature[tier]} />
                   </Box>
@@ -399,7 +398,7 @@ export default function BillingPage() {
                 <BlockStack gap="100">
                   <Text as="p" fontWeight="semibold">Is the Free plan really free?</Text>
                   <Text as="p" tone="subdued">
-                    Yes. The Free plan is free forever with no credit card required. You get 2 active bundles and percentage discounts,
+                    Yes. The Free plan is free forever with no credit card required. You get 1 active bundle and percentage discounts,
                     up to $500/month in bundle sales.
                   </Text>
                 </BlockStack>
