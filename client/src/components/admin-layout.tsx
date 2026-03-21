@@ -1,5 +1,5 @@
 import "@shopify/polaris/build/esm/styles.css";
-import { AppProvider } from "@shopify/polaris";
+import { AppProvider, Frame } from "@shopify/polaris";
 import type { LinkLikeComponentProps } from "@shopify/polaris/build/ts/src/utilities/link/types";
 import enTranslations from "@shopify/polaris/locales/en.json";
 import { NavMenu } from "@shopify/app-bridge-react";
@@ -19,7 +19,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         <a href="/billing">Pricing</a>
         <a href="/support">Support</a>
       </NavMenu>
-      {children}
+      <Frame>{children}</Frame>
     </AppProvider>
   );
 }
