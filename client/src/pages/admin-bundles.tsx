@@ -8,7 +8,6 @@ import {
   Button,
   InlineStack,
   useIndexResourceState,
-  Modal,
   Card,
   BlockStack,
   InlineGrid,
@@ -357,33 +356,33 @@ export default function AdminBundles() {
             </Button>
           </InlineStack>
 
-          <Modal
-            open={deleteTarget !== null}
-            onClose={handleCancelDelete}
-            title="Delete bundle?"
-            primaryAction={{
-              content: "Delete",
-              destructive: true,
-              loading: deleteMut.isPending,
-              onAction: handleConfirmDelete,
-            }}
-            secondaryActions={[
-              {
-                content: "Cancel",
-                onAction: handleCancelDelete,
-              },
-            ]}
-          >
-            <Modal.Section>
-              <Text as="p">
-                Are you sure you want to delete{" "}
-                <Text as="span" fontWeight="bold">
-                  {deleteTarget?.name}
+          {deleteTarget !== null && (
+            <Banner
+              title={`Delete "${deleteTarget.name}"?`}
+              tone="critical"
+              onDismiss={handleCancelDelete}
+            >
+              <BlockStack gap="300">
+                <Text as="p">
+                  This will permanently remove the bundle and all its slot configuration. This action cannot be undone.
                 </Text>
-                ? This will permanently remove the bundle and all its slot configuration. This action cannot be undone.
-              </Text>
-            </Modal.Section>
-          </Modal>
+                <InlineStack gap="200">
+                  <Button
+                    tone="critical"
+                    variant="primary"
+                    loading={deleteMut.isPending}
+                    onClick={handleConfirmDelete}
+                    data-testid="button-confirm-delete"
+                  >
+                    Yes, delete bundle
+                  </Button>
+                  <Button onClick={handleCancelDelete} data-testid="button-cancel-delete">
+                    Cancel
+                  </Button>
+                </InlineStack>
+              </BlockStack>
+            </Banner>
+          )}
 
           {!isLoading && bundles.length === 0 ? (
             <EmptyState
