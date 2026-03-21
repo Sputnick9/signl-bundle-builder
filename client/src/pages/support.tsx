@@ -52,7 +52,7 @@ export default function SupportPage() {
             tone="info"
             action={{
               content: "Email support",
-              url: "mailto:support@signl.app",
+              url: "mailto:support@signlhub.com",
               external: true,
             }}
           >
@@ -72,11 +72,11 @@ export default function SupportPage() {
                     <Text as="p" tone="subdued">For bugs, billing questions, and feature requests.</Text>
                     <Button
                       icon={EmailIcon}
-                      url="mailto:support@signl.app"
+                      url="mailto:support@signlhub.com"
                       external
                       data-testid="link-email-support"
                     >
-                      support@signl.app
+                      support@signlhub.com
                     </Button>
                   </BlockStack>
                 </Box>
