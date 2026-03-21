@@ -5,7 +5,7 @@ import { storage } from "./storage";
 import { addToCartSchema, bundles, shopSettings, insertShopSettingsSchema, DEFAULT_SHOP_SETTINGS, type BundleWithSlots } from "@shared/schema";
 import type { DiscountTierRule } from "@shared/schema";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, and, gte, sql as drizzleSql } from "drizzle-orm";
 import { getShopify, shopifyConfigured, sessionStorage, getAppUrl } from "./shopify";
 import { log } from "./index";
 import {
@@ -30,9 +30,7 @@ import {
 } from "./bundle-db";
 import type { SlotSeed } from "./bundle-db";
 import { z } from "zod";
-import { db } from "./db";
 import { bundleEvents, bundleEventTypeZodEnum } from "@shared/schema";
-import { eq, and, gte, sql as drizzleSql } from "drizzle-orm";
 
 const SHOPIFY_HOST_PATTERN = /^(admin\.shopify\.com|[a-z0-9][a-z0-9-]*\.myshopify\.com)(\/|$)/i;
 
