@@ -16,7 +16,7 @@ import {
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+
 import AdminLayout from "@/components/admin-layout";
 
 async function buildAuthHeaders(): Promise<HeadersInit> {
@@ -105,7 +105,6 @@ function KpiCard({
 
 export default function AnalyticsPage() {
   const [days, setDays] = useState("30");
-  const [, setLocation] = useLocation();
 
   const { data, isLoading, isError } = useQuery<AnalyticsResponse | null>({
     queryKey: ["/api/analytics", days],
@@ -114,15 +113,7 @@ export default function AnalyticsPage() {
         headers: await buildAuthHeaders(),
         credentials: "include",
       });
-      if (res.status === 401) return null;
-      if (res.status === 402) {
-        const params = new URLSearchParams(window.location.search);
-        const shop = params.get("shop") ?? "";
-        const host = params.get("host") ?? "";
-        const billingUrl = `/billing${shop ? `?shop=${encodeURIComponent(shop)}` : ""}${host ? `${shop ? "&" : "?"}host=${encodeURIComponent(host)}` : ""}`;
-        setLocation(billingUrl);
-        return null;
-      }
+      if (res.status === 401 || res.status === 402) return null;
       if (!res.ok) throw new Error(`${res.status}`);
       return res.json();
     },
