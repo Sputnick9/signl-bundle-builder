@@ -201,9 +201,10 @@ export default function AdminBundles() {
   const urlParams = new URLSearchParams(window.location.search);
   const shopParam = urlParams.get("shop") ?? "";
 
-  const { data: bundles = [], isLoading } = useQuery<Bundle[]>({
+  const { data, isLoading } = useQuery<Bundle[]>({
     queryKey: ["/api/bundles"],
   });
+  const bundles = data ?? [];
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/bundles/${id}`),
