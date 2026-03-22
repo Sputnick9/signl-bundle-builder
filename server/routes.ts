@@ -221,12 +221,11 @@ function makeRequireActiveSubscription() {
             next();
             return;
           }
-          if (localStatus.status === "none") {
-            await upsertFreeSubscription(shop);
-            log(`Auto-enrolled ${shop} on free tier (missing subscription record)`);
-            next();
-            return;
-          }
+          // No active paid subscription — revert to free tier
+          await upsertFreeSubscription(shop);
+          log(`Auto-enrolled ${shop} on free tier`);
+          next();
+          return;
         } catch (liveErr) {
           log(`Billing live check for ${shop} failed, falling back to DB: ${liveErr instanceof Error ? liveErr.message : String(liveErr)}`);
           const localStatus = await getSubscriptionStatus(shop);
@@ -234,12 +233,11 @@ function makeRequireActiveSubscription() {
             next();
             return;
           }
-          if (localStatus.status === "none") {
-            await upsertFreeSubscription(shop);
-            log(`Auto-enrolled ${shop} on free tier (missing subscription record, fallback path)`);
-            next();
-            return;
-          }
+          // Fallback: revert to free tier
+          await upsertFreeSubscription(shop);
+          log(`Auto-enrolled ${shop} on free tier (fallback path)`);
+          next();
+          return;
         }
       } else {
         const localStatus = await getSubscriptionStatus(shop);
@@ -247,18 +245,18 @@ function makeRequireActiveSubscription() {
           next();
           return;
         }
-        if (localStatus.status === "none") {
-          await upsertFreeSubscription(shop);
-          log(`Auto-enrolled ${shop} on free tier (no session, missing subscription record)`);
-          next();
-          return;
-        }
+        // No active subscription — always fall back to free tier
+        await upsertFreeSubscription(shop);
+        log(`Auto-enrolled ${shop} on free tier`);
+        next();
+        return;
       }
-      res.status(402).json({
-        error: "Subscription required",
-        billingRequired: true,
-        message: "An active SiGNL Bundle Builder subscription is required to use this app.",
-      });
+      // Reached only when a session exists, subscription is not active,
+      // and status is not "none" (e.g. pending/cancelled) — revert to free
+      await upsertFreeSubscription(shop);
+      log(`Reverted ${shop} to free tier (prior non-active subscription)`);
+      next();
+      return;
     } catch (err) {
       log(`requireActiveSubscription error for ${shop}: ${err instanceof Error ? err.message : String(err)}`);
       res.status(402).json({
@@ -884,8 +882,10 @@ export async function registerRoutes(
     }
 
     const shopifyInstance = getShopify();
-    if (!shopifyInstance) {
-      res.status(503).json({ error: "Shopify not configured" });
+    if (!shopifyInstance || !shopifyConfigured) {
+      const numericId = collectionId.replace(/\D/g, "");
+      const mockProducts = MOCK_COLLECTION_PRODUCTS[numericId] ?? [];
+      res.json({ products: mockProducts });
       return;
     }
 
