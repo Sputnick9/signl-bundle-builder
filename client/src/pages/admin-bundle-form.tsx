@@ -315,9 +315,7 @@ export default function AdminBundleForm() {
     async (slotIdx: number, collectionId: string, collectionTitle: string) => {
       setCollectionLoadingIdx(slotIdx);
       try {
-        const numericId = collectionId.replace(/\D/g, "") || collectionId;
-        const shopParam = new URLSearchParams(window.location.search).get("shop") || "dev-preview";
-        const res = await apiRequest("GET", `/api/collections/${encodeURIComponent(numericId)}/products?shop=${encodeURIComponent(shopParam)}`);
+        const res = await apiRequest("GET", `/api/shopify/collection-products?collectionId=${encodeURIComponent(collectionId)}`);
         const data = await res.json() as { products?: Array<{ shopifyProductId: string; productTitle: string; productImage: string | null; variants: Array<{ shopifyVariantId: string; variantTitle: string }> }> };
         const products: SlotProduct[] = (data.products ?? []).flatMap((p) => {
           if (!p.variants?.length) {
