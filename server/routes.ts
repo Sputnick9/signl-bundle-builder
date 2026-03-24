@@ -206,7 +206,11 @@ function makeRequireActiveSubscription() {
       res.status(401).json({ error: "Unauthorized: missing shop context" });
       return;
     }
+
+    // Always allow access — billing enforcement is best-effort.
+    // We enroll shops in free tier when needed, but never block on errors.
     try {
+      // Check for an active paid subscription via Shopify's billing API.
       const sessions = await sessionStorage.findSessionsByShop(shop);
       const session = sessions.find((s) => !!s.accessToken);
       if (session) {
@@ -216,54 +220,28 @@ function makeRequireActiveSubscription() {
             next();
             return;
           }
-          const localStatus = await getSubscriptionStatus(shop);
-          if (localStatus.hasSubscription) {
-            next();
-            return;
-          }
-          // No active paid subscription — revert to free tier
-          await upsertFreeSubscription(shop);
-          log(`Auto-enrolled ${shop} on free tier`);
-          next();
-          return;
         } catch (liveErr) {
-          log(`Billing live check for ${shop} failed, falling back to DB: ${liveErr instanceof Error ? liveErr.message : String(liveErr)}`);
-          const localStatus = await getSubscriptionStatus(shop);
-          if (localStatus.hasSubscription) {
-            next();
-            return;
-          }
-          // Fallback: revert to free tier
-          await upsertFreeSubscription(shop);
-          log(`Auto-enrolled ${shop} on free tier (fallback path)`);
-          next();
-          return;
+          log(`Billing live check for ${shop} skipped: ${liveErr instanceof Error ? liveErr.message : String(liveErr)}`);
         }
-      } else {
-        const localStatus = await getSubscriptionStatus(shop);
-        if (localStatus.hasSubscription) {
-          next();
-          return;
-        }
-        // No active subscription — always fall back to free tier
-        await upsertFreeSubscription(shop);
-        log(`Auto-enrolled ${shop} on free tier`);
-        next();
-        return;
       }
-      // Reached only when a session exists, subscription is not active,
-      // and status is not "none" (e.g. pending/cancelled) — revert to free
-      await upsertFreeSubscription(shop);
-      log(`Reverted ${shop} to free tier (prior non-active subscription)`);
+
+      // No live paid subscription — ensure the shop is on the free tier.
+      try {
+        const localStatus = await getSubscriptionStatus(shop);
+        if (!localStatus.hasSubscription) {
+          await upsertFreeSubscription(shop);
+          log(`Enrolled ${shop} on free tier`);
+        }
+      } catch (dbErr) {
+        log(`Free-tier enrollment for ${shop} failed (DB issue): ${dbErr instanceof Error ? dbErr.message : String(dbErr)}`);
+        // Allow access anyway — don't block users on DB errors.
+      }
+
       next();
-      return;
     } catch (err) {
-      log(`requireActiveSubscription error for ${shop}: ${err instanceof Error ? err.message : String(err)}`);
-      res.status(402).json({
-        error: "Subscription check failed",
-        billingRequired: true,
-        message: "Unable to verify subscription status. Please try again.",
-      });
+      // Any unexpected error: log and allow through. Never block on billing check failures.
+      log(`requireActiveSubscription unexpected error for ${shop}: ${err instanceof Error ? err.message : String(err)}`);
+      next();
     }
   };
 }
@@ -747,7 +725,10 @@ export async function registerRoutes(
       const sessions = await sessionStorage.findSessionsByShop(shop);
       const session = sessions.find((s) => !!s.accessToken);
       if (!session) {
-        res.json({ collections: MOCK_COLLECTIONS });
+        // In production with Shopify configured, return empty list rather than fake
+        // mock data that could confuse the user into picking non-existent collections.
+        log(`Collections: no stored session found for ${shop} — returning empty list`);
+        res.json({ collections: [] });
         return;
       }
 
@@ -892,8 +873,9 @@ export async function registerRoutes(
     try {
       const sessions = await sessionStorage.findSessionsByShop(shop);
       const session = sessions.find((s) => !!s.accessToken);
+      log(`shopify/collection-products: shop=${shop} sessions_found=${sessions.length} has_token=${!!session}`);
       if (!session) {
-        res.status(401).json({ error: "No active session for shop" });
+        res.status(401).json({ error: `No active Shopify session for shop ${shop}. Please re-authenticate via /auth?shop=${shop}` });
         return;
       }
 
@@ -903,27 +885,37 @@ export async function registerRoutes(
         return;
       }
 
+      log(`Fetching products for collection ${numericId} from shop ${shop}`);
+
       const client = new shopifyInstance.clients.Rest({ session });
       const allRaw: Array<Record<string, unknown>> = [];
-      let currentQ: Record<string, string> = { collection_id: numericId, limit: "250", fields: "id,title,images,variants" };
+
+      // Use the dedicated collections/{id}/products endpoint — works for both
+      // custom and smart (automated) collections in all Shopify API versions.
+      let pageQuery: Record<string, string> = { limit: "250" };
       let hasMorePages = true;
 
       while (hasMorePages) {
-        const response = await client.get({ path: "products", query: currentQ });
-        const page = (response.body as Record<string, unknown>).products as Array<Record<string, unknown>> ?? [];
+        const response = await client.get({
+          path: `collections/${numericId}/products`,
+          query: pageQuery,
+        });
+        const page = ((response.body as Record<string, unknown>).products as Array<Record<string, unknown>>) ?? [];
         allRaw.push(...page);
         const nxt = (response as { pageInfo?: { nextPage?: Record<string, string> } }).pageInfo?.nextPage;
         if (nxt) {
-          currentQ = nxt;
+          pageQuery = nxt;
         } else {
           hasMorePages = false;
         }
       }
 
+      log(`Fetched ${allRaw.length} products for collection ${numericId}`);
+
       const products = allRaw.map((p) => {
         const images = p.images as Array<Record<string, unknown>>;
         const variants = p.variants as Array<Record<string, unknown>>;
-        const productImage = images?.[0]?.src as string ?? null;
+        const productImage = (images?.[0]?.src as string) ?? null;
         return {
           shopifyProductId: `gid://shopify/Product/${p.id as number}`,
           productTitle: p.title as string,
@@ -939,8 +931,8 @@ export async function registerRoutes(
       res.json({ products });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      log(`Collection products error: ${msg}`);
-      res.status(500).json({ error: "Failed to fetch collection products" });
+      log(`Collection products error for shop=${shop} collectionId=${collectionId}: ${msg}`);
+      res.status(500).json({ error: `Failed to fetch collection products: ${msg}` });
     }
   });
 
