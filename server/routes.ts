@@ -211,8 +211,12 @@ function makeRequireActiveSubscription() {
     // We enroll shops in free tier when needed, but never block on errors.
     try {
       // Check for an active paid subscription via Shopify's billing API.
-      const sessions = await sessionStorage.findSessionsByShop(shop);
-      const session = sessions.find((s) => !!s.accessToken);
+      // Use the predictable offline session ID first, then fall back to a DB query.
+      let session = await sessionStorage.loadSession(`offline_${shop}`);
+      if (!session?.accessToken) {
+        const all = await sessionStorage.findSessionsByShop(shop);
+        session = all.find((s) => !!s.accessToken) ?? null;
+      }
       if (session) {
         try {
           const isLive = await checkSubscriptionLive(shopify, session);
@@ -722,8 +726,13 @@ export async function registerRoutes(
     }
 
     try {
-      const sessions = await sessionStorage.findSessionsByShop(shop);
-      const session = sessions.find((s) => !!s.accessToken);
+      // Offline sessions always use the ID `offline_${shop}`.
+      // Try that direct lookup first; fall back to findSessionsByShop as a safety net.
+      let session = await sessionStorage.loadSession(`offline_${shop}`);
+      if (!session?.accessToken) {
+        const all = await sessionStorage.findSessionsByShop(shop);
+        session = all.find((s) => !!s.accessToken);
+      }
       if (!session) {
         // In production with Shopify configured, return empty list rather than fake
         // mock data that could confuse the user into picking non-existent collections.
@@ -871,11 +880,15 @@ export async function registerRoutes(
     }
 
     try {
-      const sessions = await sessionStorage.findSessionsByShop(shop);
-      const session = sessions.find((s) => !!s.accessToken);
-      log(`shopify/collection-products: shop=${shop} sessions_found=${sessions.length} has_token=${!!session}`);
+      // Try the predictable offline session ID first, then fall back to a DB query.
+      let session = await sessionStorage.loadSession(`offline_${shop}`);
+      if (!session?.accessToken) {
+        const all = await sessionStorage.findSessionsByShop(shop);
+        session = all.find((s) => !!s.accessToken);
+      }
+      log(`shopify/collection-products: shop=${shop} session_found=${!!session}`);
       if (!session) {
-        res.status(401).json({ error: `No active Shopify session for shop ${shop}. Please re-authenticate via /auth?shop=${shop}` });
+        res.status(401).json({ error: `No active Shopify session for shop ${shop}. Please re-open the app from your Shopify admin to re-authenticate.` });
         return;
       }
 
