@@ -82,7 +82,11 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  await autoMigrate(pool);
+  try {
+    await autoMigrate(pool);
+  } catch (err) {
+    console.error("Auto-migration failed (server will still start):", err);
+  }
 
   await registerRoutes(httpServer, app);
 
