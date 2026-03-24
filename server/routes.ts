@@ -66,16 +66,6 @@ const bundleSlotSchema = z.object({
   maxQty: z.number().int().min(1).nullable().optional(),
   products: z.array(slotProductSchema).default([]),
 }).superRefine((s, ctx) => {
-  if (!s.shopifyCollectionId && s.products.length === 0) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.too_small,
-      minimum: 1,
-      inclusive: true,
-      type: "array",
-      message: "Each slot must have at least one product or a linked collection",
-      path: ["products"],
-    });
-  }
   if (s.maxQty != null && s.maxQty < s.minQty) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -1234,8 +1224,8 @@ export async function registerRoutes(
       res.json({ days, totalViews, totalCarts, totalOrders, stats });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      log(`Analytics error: ${msg}`);
-      res.status(500).json({ error: "Failed to fetch analytics" });
+      log(`Analytics error (returning empty): ${msg}`);
+      res.json({ days, totalViews: 0, totalCarts: 0, totalOrders: 0, stats: [] });
     }
   });
 
