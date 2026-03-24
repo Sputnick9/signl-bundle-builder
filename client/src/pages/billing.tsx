@@ -111,14 +111,14 @@ const PLAN_DISPLAY: Record<PlanTier, { label: string; tagline: string; price: st
     tagline: "For growing stores scaling bundle revenue",
     price: "29",
     trial: "7-day free trial",
-    popular: false,
+    popular: true,
   },
   pro: {
     label: "Pro",
     tagline: "For high-volume stores with custom needs",
     price: "49",
     trial: "14-day free trial",
-    popular: true,
+    popular: false,
   },
 };
 
