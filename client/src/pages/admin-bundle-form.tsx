@@ -348,8 +348,13 @@ export default function AdminBundleForm() {
               : s
           )
         );
-      } catch {
-        setError(`Failed to load products from collection "${collectionTitle}". You can add them manually.`);
+      } catch (err: unknown) {
+        const raw = err instanceof Error ? err.message : String(err);
+        const isSessionErr = raw.includes("401") || raw.toLowerCase().includes("session") || raw.toLowerCase().includes("auth");
+        const userMsg = isSessionErr
+          ? `Could not connect to your Shopify store — please reload the app or re-open it from your Shopify admin.`
+          : `Failed to load products from collection "${collectionTitle}". You can add them manually.`;
+        setError(userMsg);
         setSlots((prev) =>
           prev.map((s, idx) =>
             idx === slotIdx
