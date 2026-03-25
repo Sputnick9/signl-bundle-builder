@@ -2,6 +2,28 @@ import { z } from "zod";
 import { pgTable, text, boolean, timestamp, serial, integer, jsonb, index, pgEnum, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
+export interface DiscountTierRule {
+  minQty: number;
+  discountValue: number;
+}
+
+export const discountTemplates = pgTable(
+  "discount_templates",
+  {
+    id: serial("id").primaryKey(),
+    shop: text("shop").notNull(),
+    name: text("name").notNull(),
+    key: text("key").notNull(),
+    discountType: text("discount_type").notNull().default("percentage"),
+    tiers: jsonb("tiers").notNull().$type<DiscountTierRule[]>().default([]),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    shopKeyUnique: unique("discount_templates_shop_key_unique").on(t.shop, t.key),
+  })
+);
+
 export const shopifySessions = pgTable("shopify_sessions", {
   id: text("id").primaryKey(),
   shop: text("shop").notNull(),
@@ -15,11 +37,6 @@ export const shopifySessions = pgTable("shopify_sessions", {
 
 export type ShopifySession = typeof shopifySessions.$inferSelect;
 export type InsertShopifySession = typeof shopifySessions.$inferInsert;
-
-export interface DiscountTierRule {
-  minQty: number;
-  discountValue: number;
-}
 
 export const bundles = pgTable("bundles", {
   id: serial("id").primaryKey(),
@@ -218,3 +235,13 @@ export const DEFAULT_SHOP_SETTINGS = {
   progressBarBg: "#E5E7EB",
   customCss: "",
 } as const;
+
+export type DiscountTemplate = typeof discountTemplates.$inferSelect;
+export type InsertDiscountTemplate = typeof discountTemplates.$inferInsert;
+
+export const insertDiscountTemplateSchema = createInsertSchema(discountTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertDiscountTemplateInput = z.infer<typeof insertDiscountTemplateSchema>;
