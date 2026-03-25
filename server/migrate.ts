@@ -125,6 +125,25 @@ export async function autoMigrate(pool: Pool): Promise<void> {
       );
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS discount_templates (
+        id SERIAL PRIMARY KEY,
+        shop TEXT NOT NULL,
+        name TEXT NOT NULL,
+        key TEXT NOT NULL,
+        discount_type TEXT NOT NULL DEFAULT 'percentage',
+        tiers JSONB NOT NULL DEFAULT '[]',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (shop, key)
+      );
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS discount_templates_shop_idx
+        ON discount_templates(shop);
+    `);
+
     migrateLog("Auto-migration complete — all tables ready.");
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
