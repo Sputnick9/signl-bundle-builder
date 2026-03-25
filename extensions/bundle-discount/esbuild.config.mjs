@@ -1,12 +1,21 @@
 // Build script for the SiGNL Bundle Discount Shopify Function.
-// Uses the Shopify JavaScript runtime (api_version 2024-04) — no WASM/Javy needed.
-// The function just exports a `run` function; Shopify's runtime handles I/O.
+// Uses the Shopify JavaScript runtime with @shopify/shopify_function for I/O.
 // Run via: npm run build (called automatically by `shopify app deploy`)
 
 import * as esbuild from "esbuild";
 
+// Entry wraps the exported run function with @shopify/shopify_function I/O
+const entryContent = `
+import { shopifyFunction } from "@shopify/shopify_function";
+import { run } from "./src/index.js";
+shopifyFunction(run);
+`;
+
 await esbuild.build({
-  entryPoints: ["src/index.js"],
+  stdin: {
+    contents: entryContent,
+    resolveDir: ".",
+  },
   bundle: true,
   outfile: "dist/function.js",
   format: "esm",
