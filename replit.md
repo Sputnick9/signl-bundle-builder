@@ -143,8 +143,9 @@ Set these in Replit Secrets before enabling Shopify OAuth:
 
 ## Key File Structure
 ```
-shared/schema.ts                    - Drizzle schema: shopify_sessions, bundles, bundle_slots, bundle_slot_products
+shared/schema.ts                    - Drizzle schema: all tables + types
 server/db.ts                        - PostgreSQL + Drizzle ORM connection
+server/migrate.ts                   - Auto-migration: CREATE TABLE IF NOT EXISTS for all tables
 server/shopify.ts                   - Shopify API SDK config + session storage
 server/bundle-db.ts                 - Bundle CRUD with transactional slot/product writes
 server/routes.ts                    - Express routes: OAuth, webhooks, bundle API
@@ -153,17 +154,21 @@ client/src/App.tsx                  - wouter Router: admin pages
 client/src/pages/
   admin-bundles.tsx                 - Bundles hub: stats, create/preview, list, how-to, FAQ
   admin-bundle-form.tsx             - 3-step create/edit wizard
-  analytics-stub.tsx                - Analytics page (coming soon)
-  settings-stub.tsx                 - Settings page (coming soon)
+  discount-templates.tsx            - Discount Templates CRUD page (Task 16)
+  setup-guide.tsx                   - Theme Bundle Builder setup guide (Task 16)
+  analytics.tsx                     - Analytics page
+  settings-stub.tsx                 - Settings page
   support.tsx                       - Support page with contact, resources, FAQ
   billing.tsx                       - Subscription pricing page
 client/src/components/
-  admin-layout.tsx                  - Polaris Frame shell + NavMenu (5 nav items)
+  admin-layout.tsx                  - Polaris Frame shell + NavMenu (7 nav items)
 extensions/bundle-picker/
   shopify.extension.toml            - Shopify CLI 3.x extension manifest
-  blocks/bundle-picker.liquid       - OS 2.0 App Block (schema + data attributes)
-  assets/bundle-picker.js           - Slot-based bundle picker (vanilla JS IIFE)
-  assets/bundle-picker.css          - Scoped BEM styles for storefront picker
+  blocks/bundle-picker.liquid       - OS 2.0 App Block (target: section)
+  sections/bundle-builder.liquid    - NEW: theme-editor-native section with category blocks (Task 16)
+  assets/bundle-picker.js           - Original: slot-based bundle picker (fetches app API)
+  assets/bundle-builder.js          - NEW: theme-native bundle builder (reads DOM + public Shopify API) (Task 16)
+  assets/bundle-picker.css          - Scoped BEM styles (shared by both JS scripts)
 ```
 
 ## Shopify Partner Setup (One-Time)
