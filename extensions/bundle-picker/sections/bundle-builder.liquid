@@ -1,0 +1,136 @@
+{% comment %}
+  SiGNL Bundle Builder — Theme App Extension section
+  Native theme-editor section: configure categories via blocks (each backed by a
+  Shopify collection picker), and optionally link a Discount Template by key for
+  automatic checkout discounts via the SiGNL Bundle Discount Shopify Function.
+
+  No liquid code editing required — everything is controlled in the theme editor.
+{% endcomment %}
+
+{{ 'bundle-picker.css' | asset_url | stylesheet_tag }}
+
+<div
+  class="signl-bundle-builder signl-bundle-picker"
+  data-shop="{{ shop.permanent_domain }}"
+  data-app-url="{{ section.settings.app_url }}"
+  data-discount-key="{{ section.settings.discount_key }}"
+  data-bundle-id="theme-{{ section.id }}"
+  data-heading="{{ section.settings.heading | escape }}"
+  data-subheading="{{ section.settings.subheading | escape }}"
+  data-cta-text="{{ section.settings.cta_text | escape }}"
+  aria-live="polite"
+>
+  {%- for block in section.blocks -%}
+    {%- if block.type == "category" -%}
+      {%- assign collection_handle = block.settings.collection.handle | default: "" -%}
+      {%- assign collection_id = block.settings.collection.id | default: "" -%}
+      <div
+        data-signl-category
+        data-name="{{ block.settings.title | escape }}"
+        data-collection-handle="{{ collection_handle }}"
+        data-collection-id="{{ collection_id }}"
+        data-min-qty="{{ block.settings.min_qty | default: 1 }}"
+        data-max-qty="{{ block.settings.max_qty | default: 0 }}"
+        style="display:none"
+        {{ block.shopify_attributes }}
+      ></div>
+    {%- endif -%}
+  {%- endfor -%}
+
+  <div class="signl-bp__loading">
+    <div class="signl-bp__spinner"></div>
+    <p>Loading bundle&hellip;</p>
+  </div>
+</div>
+
+<script src="{{ 'bundle-builder.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "Bundle Builder",
+  "settings": [
+    {
+      "type": "text",
+      "id": "app_url",
+      "label": "App URL",
+      "info": "Your SiGNL Bundle Builder app URL (e.g. https://your-app.onrender.com). Required.",
+      "placeholder": "https://your-app.onrender.com"
+    },
+    {
+      "type": "text",
+      "id": "discount_key",
+      "label": "Discount Template Key",
+      "info": "Optional. Enter the key slug of a Discount Template created in the SiGNL Bundle Builder admin to enable automatic checkout discounts."
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Section heading",
+      "default": "Build Your Bundle"
+    },
+    {
+      "type": "text",
+      "id": "subheading",
+      "label": "Subheading",
+      "info": "Optional subtitle text shown below the heading"
+    },
+    {
+      "type": "text",
+      "id": "cta_text",
+      "label": "Add to cart button text",
+      "default": "Add Bundle to Cart"
+    }
+  ],
+  "blocks": [
+    {
+      "type": "category",
+      "name": "Category",
+      "settings": [
+        {
+          "type": "text",
+          "id": "title",
+          "label": "Category name",
+          "default": "Choose products",
+          "info": "Tab label shown to shoppers"
+        },
+        {
+          "type": "collection",
+          "id": "collection",
+          "label": "Collection",
+          "info": "Products from this collection are displayed in this category"
+        },
+        {
+          "type": "range",
+          "id": "min_qty",
+          "label": "Minimum items",
+          "min": 1,
+          "max": 20,
+          "step": 1,
+          "default": 1,
+          "info": "Shoppers must select at least this many items from this category"
+        },
+        {
+          "type": "range",
+          "id": "max_qty",
+          "label": "Maximum items (0 = unlimited)",
+          "min": 0,
+          "max": 20,
+          "step": 1,
+          "default": 0,
+          "info": "Maximum items a shopper can pick from this category. Set 0 for unlimited."
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Bundle Builder",
+      "blocks": [
+        {
+          "type": "category"
+        }
+      ]
+    }
+  ]
+}
+{% endschema %}
