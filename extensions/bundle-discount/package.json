@@ -6,6 +6,9 @@
   "scripts": {
     "build": "node esbuild.config.mjs"
   },
+  "dependencies": {
+    "@shopify/shopify_function": "~2.0.0"
+  },
   "devDependencies": {
     "esbuild": "^0.20.0"
   }
