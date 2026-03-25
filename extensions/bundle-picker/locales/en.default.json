@@ -1,0 +1,46 @@
+{
+  "sections": {
+    "bundle-builder": {
+      "name": "Bundle Builder",
+      "settings": {
+        "app_url": {
+          "label": "App URL"
+        },
+        "discount_key": {
+          "label": "Discount Template Key"
+        },
+        "heading": {
+          "label": "Heading"
+        },
+        "subheading": {
+          "label": "Subheading"
+        },
+        "cta_text": {
+          "label": "Button text"
+        }
+      },
+      "blocks": {
+        "category": {
+          "name": "Category",
+          "settings": {
+            "title": {
+              "label": "Category name"
+            },
+            "collection": {
+              "label": "Collection"
+            },
+            "min_qty": {
+              "label": "Minimum items"
+            },
+            "max_qty": {
+              "label": "Maximum items"
+            },
+            "icon_svg": {
+              "label": "Tab icon SVG"
+            }
+          }
+        }
+      }
+    }
+  }
+}
