@@ -1,5 +1,5 @@
 import AdminLayout from "@/components/admin-layout";
-import { Page, Card, BlockStack, Text, InlineStack, Badge, Divider, Box, List, Button, Banner } from "@shopify/polaris";
+import { Page, Card, BlockStack, Text, InlineStack, Divider, Box, List, Button, Banner } from "@shopify/polaris";
 
 const STEPS = [
   {
@@ -83,12 +83,25 @@ const STEPS = [
   },
 ];
 
+function getThemeEditorUrl(): string {
+  const params = new URLSearchParams(window.location.search);
+  const shop = params.get("shop") || "";
+  if (!shop) return "https://admin.shopify.com/store/themes/current/editor";
+  const storeName = shop.replace(".myshopify.com", "");
+  return `https://admin.shopify.com/store/${storeName}/themes/current/editor`;
+}
+
 export default function SetupGuidePage() {
   return (
     <AdminLayout>
       <Page
         title="Setup Guide"
         subtitle="Get the Bundle Builder section running in your Shopify theme in minutes"
+        primaryAction={{
+          content: "Open Theme Editor",
+          url: getThemeEditorUrl(),
+          external: true,
+        }}
       >
         <BlockStack gap="500">
           <Banner tone="success">
@@ -122,11 +135,12 @@ export default function SetupGuidePage() {
 
           <Card>
             <BlockStack gap="300">
-              <Text as="h2" variant="headingMd">Need help?</Text>
-              <Text as="p">Contact us at <strong>support@signlhub.com</strong> or visit the Support page.</Text>
+              <Text as="h2" variant="headingMd">Ready to go?</Text>
+              <Text as="p">Open the Shopify theme editor to add the Bundle Builder section, or manage your discount templates.</Text>
               <InlineStack gap="300">
-                <Button url="/support">Go to Support</Button>
+                <Button variant="primary" url={getThemeEditorUrl()} external>Open Theme Editor</Button>
                 <Button url="/discount-templates">Manage Discount Templates</Button>
+                <Button url="/support">Support</Button>
               </InlineStack>
             </BlockStack>
           </Card>
