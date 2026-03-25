@@ -31,6 +31,7 @@
         data-collection-id="{{ collection_id }}"
         data-min-qty="{{ block.settings.min_qty | default: 1 }}"
         data-max-qty="{{ block.settings.max_qty | default: 0 }}"
+        data-icon="{{ block.settings.icon_svg | escape }}"
         style="display:none"
         {{ block.shopify_attributes }}
       ></div>
@@ -43,7 +44,7 @@
   </div>
 </div>
 
-<script src="{{ 'bundle-builder.js' | asset_url }}" defer></script>
+<script src="{{ 'bundle-picker.js' | asset_url }}" defer></script>
 
 {% schema %}
 {
@@ -118,6 +119,12 @@
           "step": 1,
           "default": 0,
           "info": "Maximum items a shopper can pick from this category. Set 0 for unlimited."
+        },
+        {
+          "type": "textarea",
+          "id": "icon_svg",
+          "label": "Tab icon SVG",
+          "info": "Optional inline SVG code to display as the category tab icon (e.g. <svg>...</svg>). Leave blank for no icon."
         }
       ]
     }
