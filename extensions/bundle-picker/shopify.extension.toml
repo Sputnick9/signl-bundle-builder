@@ -1,5 +1,12 @@
 api_version = "2024-04"
 
+# SiGNL Bundle Picker — Theme App Extension
+# Provides two surface types:
+#   blocks/   — OS 2.0 App Block embedded on product pages (bundle-picker.liquid)
+#   sections/ — Full-page theme section for native theme-editor bundle building (bundle-builder.liquid)
+#
+# Both surfaces load bundle-picker.js + bundle-picker.css from assets/.
+
 [[extensions]]
 type = "theme"
 name = "SiGNL Bundle Picker"
