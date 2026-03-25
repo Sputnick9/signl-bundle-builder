@@ -915,7 +915,7 @@
 
     var productFetches = self.categories.map(function (cat) {
       if (!cat.collectionHandle) return Promise.resolve([]);
-      var url = "/collections/" + encodeURIComponent(cat.collectionHandle) + "/products.json?limit=250";
+      var url = "/collections/" + encodeURIComponent(cat.collectionHandle) + "/products.json?limit=50";
       return fetch(url)
         .then(function (r) { return r.ok ? r.json() : { products: [] }; })
         .catch(function () { return { products: [] }; })
