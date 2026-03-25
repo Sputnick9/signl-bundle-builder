@@ -14,9 +14,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     <AppProvider i18n={enTranslations} linkComponent={WouterLink}>
       <NavMenu>
         <a href="/admin/bundles" rel="home">Bundles</a>
+        <a href="/discount-templates">Discount Templates</a>
         <a href="/analytics">Analytics</a>
         <a href="/settings">Settings</a>
         <a href="/billing">Pricing</a>
+        <a href="/setup-guide">Setup Guide</a>
         <a href="/support">Support</a>
       </NavMenu>
       {children}
