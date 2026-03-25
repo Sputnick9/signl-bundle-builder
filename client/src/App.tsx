@@ -10,6 +10,8 @@ import BillingPage from "@/pages/billing";
 import SupportPage from "@/pages/support";
 import AnalyticsPage from "@/pages/analytics";
 import SettingsPage from "@/pages/settings-stub";
+import DiscountTemplatesPage from "@/pages/discount-templates";
+import SetupGuidePage from "@/pages/setup-guide";
 import NotFound from "@/pages/not-found";
 import { Component, type ReactNode } from "react";
 
@@ -54,6 +56,8 @@ function Router() {
       <Route path="/settings" component={SettingsPage} />
       <Route path="/billing" component={BillingPage} />
       <Route path="/support" component={SupportPage} />
+      <Route path="/discount-templates" component={DiscountTemplatesPage} />
+      <Route path="/setup-guide" component={SetupGuidePage} />
       <Route path="/bundle-preview" component={BundleBuilder} />
       <Route component={NotFound} />
     </Switch>
