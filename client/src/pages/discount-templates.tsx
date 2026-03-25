@@ -120,8 +120,13 @@ export default function DiscountTemplatesPage() {
     setForm((f) => ({ ...f, key: v.toLowerCase().replace(/[^a-z0-9_-]/g, "") }));
   }
 
+  const MAX_TIERS = 4;
+
   function addTier() {
-    setForm((f) => ({ ...f, tiers: [...f.tiers, { minQty: (f.tiers.at(-1)?.minQty ?? 1) + 1, discountValue: 0 }] }));
+    setForm((f) => {
+      if (f.tiers.length >= MAX_TIERS) return f;
+      return { ...f, tiers: [...f.tiers, { minQty: (f.tiers.at(-1)?.minQty ?? 1) + 1, discountValue: 0 }] };
+    });
   }
 
   function removeTier(i: number) {
@@ -267,7 +272,9 @@ export default function DiscountTemplatesPage() {
               <BlockStack gap="300">
                 <InlineStack align="space-between" blockAlign="center">
                   <Text as="h3" variant="headingSm">Discount Tiers</Text>
-                  <Button size="slim" onClick={addTier} data-testid="btn-add-tier">Add Tier</Button>
+                  <Button size="slim" onClick={addTier} disabled={form.tiers.length >= MAX_TIERS} data-testid="btn-add-tier">
+                    {form.tiers.length >= MAX_TIERS ? `Max ${MAX_TIERS} tiers` : "Add Tier"}
+                  </Button>
                 </InlineStack>
                 {formErrors.tiers && <Text as="p" tone="critical">{formErrors.tiers}</Text>}
                 {form.tiers.map((tier, i) => (
