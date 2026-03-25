@@ -32,10 +32,9 @@
         data-collection-id="{{ collection_id }}"
         data-min-qty="{{ block.settings.min_qty | default: 1 }}"
         data-max-qty="{{ block.settings.max_qty | default: 0 }}"
-        data-icon="{{ block.settings.icon_svg | escape }}"
         style="display:none"
         {{ block.shopify_attributes }}
-      ></div>
+      >{%- if block.settings.icon_svg != blank -%}<span data-signl-icon style="display:none">{{ block.settings.icon_svg }}</span>{%- endif -%}</div>
     {%- endif -%}
   {%- endfor -%}
 
