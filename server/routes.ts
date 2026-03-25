@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { createHmac, timingSafeEqual } from "crypto";
 import { storage } from "./storage";
-import { addToCartSchema, bundles, shopSettings, insertShopSettingsSchema, DEFAULT_SHOP_SETTINGS, type BundleWithSlots } from "@shared/schema";
+import { addToCartSchema, bundles, shopSettings, insertShopSettingsSchema, DEFAULT_SHOP_SETTINGS, discountTemplates, type BundleWithSlots } from "@shared/schema";
 import type { DiscountTierRule } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, sql as drizzleSql } from "drizzle-orm";
@@ -1229,6 +1229,97 @@ export async function registerRoutes(
     }
   });
 
+  /* ── Discount Templates (admin, shopifyAuth protected) ──────────────── */
+
+  const SLUG_RE = /^[a-z0-9]+(?:[_-][a-z0-9]+)*$/;
+
+  const discountTemplateBodySchema = z.object({
+    name: z.string().min(1).max(120),
+    key: z.string().min(1).max(80).regex(SLUG_RE, "Key must be lowercase alphanumeric with hyphens/underscores only"),
+    discountType: z.enum(["percentage", "fixed"]).default("percentage"),
+    tiers: z.array(z.object({
+      minQty: z.number().int().min(1),
+      discountValue: z.number().min(0),
+    })).default([]),
+  });
+
+  app.get("/api/discount-templates", shopifyAuth, async (req: Request, res: Response) => {
+    const authedReq = req as AuthenticatedRequest;
+    const shop = resolveShop(authedReq);
+    if (!shop) { res.status(401).json({ error: "Unauthorized" }); return; }
+    try {
+      const rows = await db.select().from(discountTemplates).where(eq(discountTemplates.shop, shop));
+      res.json(rows);
+    } catch (err: unknown) {
+      log(`GET discount-templates error: ${err instanceof Error ? err.message : err}`);
+      res.status(500).json({ error: "Failed to fetch discount templates" });
+    }
+  });
+
+  app.post("/api/discount-templates", shopifyAuth, async (req: Request, res: Response) => {
+    const authedReq = req as AuthenticatedRequest;
+    const shop = resolveShop(authedReq);
+    if (!shop) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const parsed = discountTemplateBodySchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() }); return; }
+    try {
+      const [row] = await db.insert(discountTemplates)
+        .values({ ...parsed.data, shop })
+        .returning();
+      res.status(201).json(row);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("unique") || msg.includes("duplicate")) {
+        res.status(409).json({ error: `A discount template with key "${parsed.data.key}" already exists` });
+        return;
+      }
+      log(`POST discount-templates error: ${msg}`);
+      res.status(500).json({ error: "Failed to create discount template" });
+    }
+  });
+
+  app.patch("/api/discount-templates/:id", shopifyAuth, async (req: Request, res: Response) => {
+    const authedReq = req as AuthenticatedRequest;
+    const shop = resolveShop(authedReq);
+    if (!shop) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const parsed = discountTemplateBodySchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() }); return; }
+    try {
+      const [row] = await db.update(discountTemplates)
+        .set({ ...parsed.data, updatedAt: new Date() })
+        .where(and(eq(discountTemplates.id, id), eq(discountTemplates.shop, shop)))
+        .returning();
+      if (!row) { res.status(404).json({ error: "Discount template not found" }); return; }
+      res.json(row);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("unique") || msg.includes("duplicate")) {
+        res.status(409).json({ error: `A discount template with that key already exists` });
+        return;
+      }
+      log(`PATCH discount-templates error: ${msg}`);
+      res.status(500).json({ error: "Failed to update discount template" });
+    }
+  });
+
+  app.delete("/api/discount-templates/:id", shopifyAuth, async (req: Request, res: Response) => {
+    const authedReq = req as AuthenticatedRequest;
+    const shop = resolveShop(authedReq);
+    if (!shop) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    try {
+      await db.delete(discountTemplates)
+        .where(and(eq(discountTemplates.id, id), eq(discountTemplates.shop, shop)));
+      res.status(204).end();
+    } catch (err: unknown) {
+      log(`DELETE discount-templates error: ${err instanceof Error ? err.message : err}`);
+      res.status(500).json({ error: "Failed to delete discount template" });
+    }
+  });
+
   /* ── Storefront public endpoints (CORS-enabled, no auth) ──────────────── */
 
   function setCorsStorefront(res: Response): void {
@@ -1690,6 +1781,47 @@ export async function registerRoutes(
       const msg = err instanceof Error ? err.message : "Unknown error";
       log(`Storefront settings error: ${msg}`);
       res.json(DEFAULT_SHOP_SETTINGS);
+    }
+  });
+
+  /* GET /api/storefront/discount-configs/:key?shop= — public, no auth */
+  app.options("/api/storefront/discount-configs/:key", (_req: Request, res: Response) => {
+    setCorsStorefront(res);
+    res.sendStatus(204);
+  });
+
+  app.get("/api/storefront/discount-configs/:key", async (req: Request, res: Response) => {
+    setCorsStorefront(res);
+    const shop = req.query.shop as string | undefined;
+    const key = req.params.key as string;
+    if (!shop || !/^[a-zA-Z0-9-]+\.myshopify\.com$/.test(shop)) {
+      res.status(400).json({ error: "Missing or invalid shop" });
+      return;
+    }
+    if (!key) {
+      res.status(400).json({ error: "Missing key" });
+      return;
+    }
+    try {
+      const rows = await db.select().from(discountTemplates)
+        .where(and(eq(discountTemplates.shop, shop), eq(discountTemplates.key, key)))
+        .limit(1);
+      if (!rows.length) {
+        res.status(404).json({ error: "Discount template not found" });
+        return;
+      }
+      const row = rows[0];
+      res.json({
+        id: row.id,
+        name: row.name,
+        key: row.key,
+        discountType: row.discountType,
+        tiers: row.tiers,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      log(`Storefront discount-configs error: ${msg}`);
+      res.status(500).json({ error: "Failed to fetch discount config" });
     }
   });
 
