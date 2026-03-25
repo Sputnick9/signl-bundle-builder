@@ -899,14 +899,15 @@
     var categoryEls = this.container.querySelectorAll("[data-signl-category]");
     if (!categoryEls.length) { this.container.innerHTML = ""; return; }
 
-    categoryEls.forEach(function (el, idx) {
+    categoryEls.forEach(function (catEl, idx) {
+      var iconEl = catEl.querySelector("[data-signl-icon]");
       self.categories.push({
         id: idx,
-        name: el.dataset.name || ("Category " + (idx + 1)),
-        collectionHandle: el.dataset.collectionHandle || "",
-        minQty: parseInt(el.dataset.minQty, 10) || 1,
-        maxQty: parseInt(el.dataset.maxQty, 10) || 0,
-        iconSvg: el.dataset.icon || "",
+        name: catEl.dataset.name || ("Category " + (idx + 1)),
+        collectionHandle: catEl.dataset.collectionHandle || "",
+        minQty: parseInt(catEl.dataset.minQty, 10) || 1,
+        maxQty: parseInt(catEl.dataset.maxQty, 10) || 0,
+        iconSvg: iconEl ? iconEl.innerHTML : "",
         products: [],
       });
       self.selections[idx] = {};
