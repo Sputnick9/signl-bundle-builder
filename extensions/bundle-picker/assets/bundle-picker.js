@@ -957,6 +957,7 @@
         self.discountConfig = results[1];
         self.applySettings(results[2]);
         self._render();
+        self.trackEvent(self.bundleId, "view");
       })
       .catch(function (err) {
         console.error("SignlBundleBuilder: init error", err);
@@ -1180,10 +1181,11 @@
     this._render();
   };
 
-  // Reuse showVariantPicker from SignlBundlePicker prototype
+  // Reuse shared methods from SignlBundlePicker prototype
   SignlBundleBuilder.prototype.showVariantPicker = SignlBundlePicker.prototype.showVariantPicker;
   SignlBundleBuilder.prototype.showError = SignlBundlePicker.prototype.showError;
   SignlBundleBuilder.prototype.applySettings = SignlBundlePicker.prototype.applySettings;
+  SignlBundleBuilder.prototype.trackEvent = SignlBundlePicker.prototype.trackEvent;
 
   SignlBundleBuilder.prototype._buildCartBar = function () {
     var self = this;
@@ -1292,6 +1294,7 @@
           bp.insertBefore(banner, bp.querySelector(".signl-bp__slots") || bp.firstChild);
           setTimeout(function () { if (banner.parentNode) banner.remove(); }, 4000);
         }
+        self.trackEvent(self.bundleId, "add_to_cart");
         document.dispatchEvent(new CustomEvent("signl:bundle-added", { detail: { bundleId: self.bundleId, items: items }, bubbles: true }));
         document.dispatchEvent(new CustomEvent("cart:refresh", { bubbles: true }));
         document.dispatchEvent(new CustomEvent("cart-drawer:open", { bubbles: true }));
