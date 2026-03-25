@@ -4,8 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node esbuild.config.mjs && javy compile -d -i dist/function.js -o dist/index.wasm",
-    "bundle-only": "node esbuild.config.mjs"
+    "build": "node esbuild.config.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.20.0"
